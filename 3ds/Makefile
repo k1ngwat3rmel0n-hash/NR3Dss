@@ -1,4 +1,3 @@
-# Based on devkitPro's official 3DS application template.
 .SUFFIXES:
 
 ifeq ($(strip $(DEVKITARM)),)
@@ -8,16 +7,14 @@ endif
 TOPDIR ?= $(CURDIR)
 include $(DEVKITARM)/3ds_rules
 
-TARGET      := nr3ds_v001
+TARGET      := nr3ds_v002
 BUILD       := build
 SOURCES     := source ../core
 DATA        :=
 INCLUDES    := ../core
-GRAPHICS    :=
-GFXBUILD    := $(BUILD)
 
-APP_TITLE       := NR3DS v0.001
-APP_DESCRIPTION := Old 3DS driving/physics prototype
+APP_TITLE       := NR3DS v0.002
+APP_DESCRIPTION := First Citro3D highway prototype
 APP_AUTHOR      := NR3DS project
 
 ARCH := -march=armv6k -mtune=mpcore -mfloat-abi=hard -mtp=soft
@@ -26,18 +23,22 @@ CFLAGS += $(INCLUDE) -D__3DS__
 CXXFLAGS := $(CFLAGS) -fno-rtti -fno-exceptions -std=gnu++17
 ASFLAGS := -g $(ARCH)
 LDFLAGS = -specs=3dsx.specs -g $(ARCH) -Wl,-Map,$(notdir $*.map)
-LIBS := -lcitro2d -lcitro3d -lctru -lm
+LIBS := -lcitro3d -lctru -lm
 LIBDIRS := $(CTRULIB) $(PORTLIBS)
 
 ifneq ($(BUILD),$(notdir $(CURDIR)))
 export OUTPUT := $(CURDIR)/$(TARGET)
 export TOPDIR := $(CURDIR)
-export VPATH := $(foreach dir,$(SOURCES),$(CURDIR)/$(dir))
+export VPATH := $(foreach dir,$(SOURCES),$(CURDIR)/$(dir)) \
+                $(foreach dir,$(DATA),$(CURDIR)/$(dir))
 export DEPSDIR := $(CURDIR)/$(BUILD)
 
 CFILES := $(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.c)))
 CPPFILES := $(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.cpp)))
 SFILES := $(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.s)))
+PICAFILES := $(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.v.pica)))
+SHLISTFILES := $(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.shlist)))
+BINFILES := $(foreach dir,$(DATA),$(notdir $(wildcard $(dir)/*.*)))
 
 ifeq ($(strip $(CPPFILES)),)
 export LD := $(CC)
@@ -46,8 +47,15 @@ export LD := $(CXX)
 endif
 
 export OFILES_SOURCES := $(CPPFILES:.cpp=.o) $(CFILES:.c=.o) $(SFILES:.s=.o)
-export OFILES := $(OFILES_SOURCES)
-export HFILES :=
+export OFILES_BIN := $(addsuffix .o,$(BINFILES)) \
+                     $(PICAFILES:.v.pica=.shbin.o) \
+                     $(SHLISTFILES:.shlist=.shbin.o)
+export OFILES := $(OFILES_BIN) $(OFILES_SOURCES)
+
+export HFILES := $(PICAFILES:.v.pica=_shbin.h) \
+                 $(SHLISTFILES:.shlist=_shbin.h) \
+                 $(addsuffix .h,$(subst .,_,$(BINFILES)))
+
 export INCLUDE := $(foreach dir,$(INCLUDES),-I$(CURDIR)/$(dir)) \
                   $(foreach dir,$(LIBDIRS),-I$(dir)/include) \
                   -I$(CURDIR)/$(BUILD)
@@ -65,12 +73,22 @@ $(BUILD):
 
 clean:
 	@echo clean ...
-	@rm -fr $(BUILD) $(TARGET).3dsx $(OUTPUT).smdh $(TARGET).elf
+	@rm -fr $(BUILD) $(TARGET).3dsx $(TARGET).smdh $(TARGET).elf $(TARGET).map
 
 else
 
 $(OUTPUT).3dsx: $(OUTPUT).elf $(_3DSXDEPS)
+$(OFILES_SOURCES): $(HFILES)
 $(OUTPUT).elf: $(OFILES)
+
+%.bin.o %_bin.h : %.bin
+	@echo $(notdir $<)
+	@$(bin2o)
+
+.PRECIOUS: %.shbin
+%.shbin.o %_shbin.h : %.shbin
+	$(SILENTMSG) $(notdir $<)
+	$(bin2o)
 
 -include $(DEPSDIR)/*.d
 

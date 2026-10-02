@@ -1,64 +1,177 @@
 #include <3ds.h>
-#include <citro2d.h>
+#include <citro3d.h>
 #include <cstdio>
 #include <cmath>
+#include <cstring>
 
+#include "vshader_shbin.h"
 #include "nr_physics.hpp"
 
 using nr3ds::InputState;
 using nr3ds::Vehicle;
 
 namespace {
-constexpr float kTopW = 400.0f;
-constexpr float kTopH = 240.0f;
+
+#define DISPLAY_TRANSFER_FLAGS \
+    (GX_TRANSFER_FLIP_VERT(0) | GX_TRANSFER_OUT_TILED(0) | GX_TRANSFER_RAW_COPY(0) | \
+     GX_TRANSFER_IN_FORMAT(GX_TRANSFER_FMT_RGBA8) | GX_TRANSFER_OUT_FORMAT(GX_TRANSFER_FMT_RGB8) | \
+     GX_TRANSFER_SCALING(GX_TRANSFER_SCALE_NO))
+
+constexpr u32 CLEAR_COLOR = 0x03050BFF;
+constexpr int kCubeVerts = 36;
+
+struct Vertex { float x, y, z; };
+
+static const Vertex kCube[kCubeVerts] = {
+    {-0.5f,-0.5f, 0.5f}, { 0.5f,-0.5f, 0.5f}, { 0.5f, 0.5f, 0.5f},
+    { 0.5f, 0.5f, 0.5f}, {-0.5f, 0.5f, 0.5f}, {-0.5f,-0.5f, 0.5f},
+    {-0.5f,-0.5f,-0.5f}, {-0.5f, 0.5f,-0.5f}, { 0.5f, 0.5f,-0.5f},
+    { 0.5f, 0.5f,-0.5f}, { 0.5f,-0.5f,-0.5f}, {-0.5f,-0.5f,-0.5f},
+    { 0.5f,-0.5f,-0.5f}, { 0.5f, 0.5f,-0.5f}, { 0.5f, 0.5f, 0.5f},
+    { 0.5f, 0.5f, 0.5f}, { 0.5f,-0.5f, 0.5f}, { 0.5f,-0.5f,-0.5f},
+    {-0.5f,-0.5f,-0.5f}, {-0.5f,-0.5f, 0.5f}, {-0.5f, 0.5f, 0.5f},
+    {-0.5f, 0.5f, 0.5f}, {-0.5f, 0.5f,-0.5f}, {-0.5f,-0.5f,-0.5f},
+    {-0.5f, 0.5f,-0.5f}, {-0.5f, 0.5f, 0.5f}, { 0.5f, 0.5f, 0.5f},
+    { 0.5f, 0.5f, 0.5f}, { 0.5f, 0.5f,-0.5f}, {-0.5f, 0.5f,-0.5f},
+    {-0.5f,-0.5f,-0.5f}, { 0.5f,-0.5f,-0.5f}, { 0.5f,-0.5f, 0.5f},
+    { 0.5f,-0.5f, 0.5f}, {-0.5f,-0.5f, 0.5f}, {-0.5f,-0.5f,-0.5f},
+};
+
+DVLB_s* gShaderDvlb = nullptr;
+shaderProgram_s gProgram{};
+int gLocProjection = -1;
+int gLocModelView = -1;
+C3D_Mtx gProjection{};
+void* gVbo = nullptr;
 
 float clampf(float v, float lo, float hi) {
     return v < lo ? lo : (v > hi ? hi : v);
 }
 
-void drawRoad(const nr3ds::Telemetry& s) {
-    const u32 sky = C2D_Color32(4, 6, 12, 255);
-    const u32 road = C2D_Color32(22, 24, 30, 255);
-    const u32 shoulder = C2D_Color32(56, 58, 64, 255);
-    const u32 lane = C2D_Color32(224, 224, 205, 255);
-    const u32 red = C2D_Color32(220, 35, 25, 255);
-    const u32 glass = C2D_Color32(40, 90, 130, 255);
+void setColor(float r, float g, float b, float a = 1.0f) {
+    C3D_FixedAttribSet(1, r, g, b, a);
+}
 
-    C2D_DrawRectSolid(0, 0, 0, kTopW, kTopH, sky);
-    C2D_DrawRectSolid(65, 0, 0, 270, kTopH, shoulder);
-    C2D_DrawRectSolid(72, 0, 0, 256, kTopH, road);
+void drawCube(float x, float y, float z,
+              float sx, float sy, float sz,
+              float yaw,
+              float r, float g, float b) {
+    C3D_Mtx modelView;
+    Mtx_Identity(&modelView);
+    Mtx_Translate(&modelView, x, y, z, true);
+    Mtx_RotateY(&modelView, yaw, true);
+    Mtx_Scale(&modelView, sx, sy, sz);
+    C3D_FVUnifMtx4x4(GPU_VERTEX_SHADER, gLocModelView, &modelView);
+    setColor(r, g, b, 1.0f);
+    C3D_DrawArrays(GPU_TRIANGLES, 0, kCubeVerts);
+}
 
-    const float scroll = std::fmod(s.posY * 3.0f, 44.0f);
-    for (int i = -1; i < 7; ++i) {
-        const float y = float(i) * 44.0f + scroll;
-        C2D_DrawRectSolid(155, y, 0, 4, 24, lane);
-        C2D_DrawRectSolid(241, y, 0, 4, 24, lane);
+void sceneInit() {
+    gShaderDvlb = DVLB_ParseFile((u32*)vshader_shbin, vshader_shbin_size);
+    shaderProgramInit(&gProgram);
+    shaderProgramSetVsh(&gProgram, &gShaderDvlb->DVLE[0]);
+    C3D_BindProgram(&gProgram);
+
+    gLocProjection = shaderInstanceGetUniformLocation(gProgram.vertexShader, "projection");
+    gLocModelView = shaderInstanceGetUniformLocation(gProgram.vertexShader, "modelView");
+
+    C3D_AttrInfo* attrInfo = C3D_GetAttrInfo();
+    AttrInfo_Init(attrInfo);
+    AttrInfo_AddLoader(attrInfo, 0, GPU_FLOAT, 3);
+    AttrInfo_AddFixed(attrInfo, 1);
+    setColor(1, 1, 1, 1);
+
+    Mtx_PerspTilt(&gProjection, C3D_AngleFromDegrees(62.0f),
+                  C3D_AspectRatioTop, 0.05f, 300.0f, false);
+
+    gVbo = linearAlloc(sizeof(kCube));
+    std::memcpy(gVbo, kCube, sizeof(kCube));
+
+    C3D_BufInfo* bufInfo = C3D_GetBufInfo();
+    BufInfo_Init(bufInfo);
+    BufInfo_Add(bufInfo, gVbo, sizeof(Vertex), 1, 0x0);
+
+    C3D_DepthTest(true, GPU_GREATER, GPU_WRITE_ALL);
+    C3D_CullFace(GPU_CULL_NONE);
+
+    C3D_TexEnv* env = C3D_GetTexEnv(0);
+    C3D_TexEnvInit(env);
+    C3D_TexEnvSrc(env, C3D_Both, GPU_PRIMARY_COLOR, 0, 0);
+    C3D_TexEnvFunc(env, C3D_Both, GPU_REPLACE);
+}
+
+void sceneExit() {
+    if (gVbo) linearFree(gVbo);
+    shaderProgramFree(&gProgram);
+    if (gShaderDvlb) DVLB_Free(gShaderDvlb);
+}
+
+void drawHighway(const nr3ds::Telemetry& s) {
+    const float segLen = 10.0f;
+    const float scroll = std::fmod(std::fabs(s.posY), segLen);
+    const float carX = clampf(s.posX, -5.0f, 5.0f);
+
+    for (int i = 0; i < 22; ++i) {
+        const float z = -7.0f - float(i) * segLen + scroll;
+        const float fog = 1.0f - clampf(float(i) / 24.0f, 0.0f, 0.82f);
+
+        drawCube(0.0f, -1.35f, z, 12.0f, 0.12f, segLen + 0.15f, 0.0f,
+                 0.10f * fog, 0.11f * fog, 0.14f * fog);
+        drawCube(-6.25f, -0.72f, z, 0.20f, 0.70f, segLen, 0.0f,
+                 0.28f * fog, 0.30f * fog, 0.34f * fog);
+        drawCube( 6.25f, -0.72f, z, 0.20f, 0.70f, segLen, 0.0f,
+                 0.28f * fog, 0.30f * fog, 0.34f * fog);
+
+        if ((i & 1) == 0) {
+            drawCube(-2.0f, -1.20f, z, 0.09f, 0.025f, 3.3f, 0.0f,
+                     0.82f * fog, 0.80f * fog, 0.64f * fog);
+            drawCube( 2.0f, -1.20f, z, 0.09f, 0.025f, 3.3f, 0.0f,
+                     0.82f * fog, 0.80f * fog, 0.64f * fog);
+        }
+
+        if ((i % 3) == 1) {
+            drawCube(-8.0f, 0.1f, z, 0.18f, 2.6f, 0.18f, 0.0f,
+                     0.12f * fog, 0.16f * fog, 0.20f * fog);
+            drawCube( 8.0f, 0.1f, z, 0.18f, 2.6f, 0.18f, 0.0f,
+                     0.12f * fog, 0.16f * fog, 0.20f * fog);
+            drawCube(-8.0f, 1.5f, z, 0.35f, 0.12f, 0.35f, 0.0f,
+                     0.75f * fog, 0.58f * fog, 0.22f * fog);
+            drawCube( 8.0f, 1.5f, z, 0.35f, 0.12f, 0.35f, 0.0f,
+                     0.75f * fog, 0.58f * fog, 0.22f * fog);
+        }
     }
 
-    const float carX = 200.0f + clampf(s.posX * 1.5f, -110.0f, 110.0f);
-    const float carY = 178.0f;
-    C2D_DrawRectSolid(carX - 9, carY - 15, 0, 18, 30, red);
-    C2D_DrawRectSolid(carX - 6, carY - 10, 0, 12, 8, glass);
-    C2D_DrawRectSolid(carX - 7, carY + 12, 0, 5, 2, C2D_Color32(255, 50, 30, 255));
-    C2D_DrawRectSolid(carX + 2, carY + 12, 0, 5, 2, C2D_Color32(255, 50, 30, 255));
+    const float carYaw = clampf(-s.driftAngleDeg * 0.012f, -0.45f, 0.45f);
+    drawCube(carX, -0.58f, -5.2f, 1.55f, 0.45f, 3.2f, carYaw,
+             0.72f, 0.045f, 0.035f);
+    drawCube(carX, -0.18f, -5.25f, 1.20f, 0.38f, 1.45f, carYaw,
+             0.08f, 0.13f, 0.18f);
+    drawCube(carX - 0.45f, -0.47f, -3.57f, 0.22f, 0.12f, 0.06f, carYaw,
+             1.0f, 0.04f, 0.02f);
+    drawCube(carX + 0.45f, -0.47f, -3.57f, 0.22f, 0.12f, 0.06f, carYaw,
+             1.0f, 0.04f, 0.02f);
 }
-}
+
+} // namespace
 
 int main(int argc, char** argv) {
     (void)argc; (void)argv;
 
     gfxInitDefault();
     C3D_Init(C3D_DEFAULT_CMDBUF_SIZE);
-    C2D_Init(C2D_DEFAULT_MAX_OBJECTS);
-    C2D_Prepare();
     consoleInit(GFX_BOTTOM, nullptr);
 
-    C3D_RenderTarget* top = C2D_CreateScreenTarget(GFX_TOP, GFX_LEFT);
+    C3D_RenderTarget* top = C3D_RenderTargetCreate(
+        240, 400, GPU_RB_RGBA8, GPU_RB_DEPTH24_STENCIL8);
+    C3D_RenderTargetSetOutput(top, GFX_TOP, GFX_LEFT, DISPLAY_TRANSFER_FLAGS);
+
+    sceneInit();
     Vehicle car;
 
-    std::printf("NR3DS v0.001 - Old 3DS prototype\n");
-    std::printf("A throttle | B brake | X handbrake\n");
-    std::printf("L/R shift | Circle Pad steer | START exit\n");
+    std::printf("NR3DS v0.002 - first Citro3D test\n");
+    std::printf("A gas | B brake | X handbrake\n");
+    std::printf("L/R shift | Circle Pad steer\n");
+    std::printf("START exit\n");
 
     while (aptMainLoop()) {
         hidScanInput();
@@ -81,21 +194,24 @@ int main(int argc, char** argv) {
         const auto& s = car.telemetry();
 
         C3D_FrameBegin(C3D_FRAME_SYNCDRAW);
-        C2D_TargetClear(top, C2D_Color32(0, 0, 0, 255));
-        C2D_SceneBegin(top);
-        drawRoad(s);
+        C3D_RenderTargetClear(top, C3D_CLEAR_ALL, CLEAR_COLOR, 0);
+        C3D_FrameDrawOn(top);
+        C3D_BindProgram(&gProgram);
+        C3D_FVUnifMtx4x4(GPU_VERTEX_SHADER, gLocProjection, &gProjection);
+        drawHighway(s);
         C3D_FrameEnd(0);
 
-        std::printf("\x1b[5;1HSpeed: %6.1f km/h   \x1b[K", s.speedKph);
-        std::printf("\x1b[6;1HRPM:   %6.0f  Gear: %d \x1b[K", s.rpm, s.gear);
-        std::printf("\x1b[7;1HTurbo: %5.2f  Slip: %5.2f\x1b[K", s.turboSpool, s.rearSlip);
-        std::printf("\x1b[8;1HDrift: %6.1f deg       \x1b[K", s.driftAngleDeg);
-        std::printf("\x1b[9;1HTire:  %5.2f  HB: %5.2f\x1b[K", s.tireTemp, s.handbrakeTimer);
-        std::printf("\x1b[11;1HCPU: %6.2f%% GPU: %6.2f%%\x1b[K",
-                    C3D_GetProcessingTime() * 6.0f, C3D_GetDrawingTime() * 6.0f);
+        std::printf("\x1b[6;1HSpeed: %6.1f km/h   \x1b[K", s.speedKph);
+        std::printf("\x1b[7;1HRPM:   %6.0f  Gear: %d \x1b[K", s.rpm, s.gear);
+        std::printf("\x1b[8;1HTurbo: %5.2f  Slip: %5.2f\x1b[K", s.turboSpool, s.rearSlip);
+        std::printf("\x1b[9;1HDrift: %6.1f deg       \x1b[K", s.driftAngleDeg);
+        std::printf("\x1b[10;1HTire:  %5.2f  HB: %5.2f\x1b[K", s.tireTemp, s.handbrakeTimer);
+        std::printf("\x1b[12;1HCPU: %6.2f%% GPU: %6.2f%%\x1b[K",
+                    C3D_GetProcessingTime() * 6.0f,
+                    C3D_GetDrawingTime() * 6.0f);
     }
 
-    C2D_Fini();
+    sceneExit();
     C3D_Fini();
     gfxExit();
     return 0;
