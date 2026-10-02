@@ -7,14 +7,14 @@ endif
 TOPDIR ?= $(CURDIR)
 include $(DEVKITARM)/3ds_rules
 
-TARGET      := nr3ds_v003
+TARGET      := nr3ds_v004
 BUILD       := build
 SOURCES     := source ../core
 DATA        :=
 INCLUDES    := ../core
 
-APP_TITLE       := NR3DS v0.003
-APP_DESCRIPTION := Citro3D chase camera and urban scene prototype
+APP_TITLE       := NR3DS v0.004
+APP_DESCRIPTION := Traffic, collisions and speed camera prototype
 APP_AUTHOR      := NR3DS project
 
 ARCH := -march=armv6k -mtune=mpcore -mfloat-abi=hard -mtp=soft

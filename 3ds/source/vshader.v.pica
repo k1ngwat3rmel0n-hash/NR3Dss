@@ -1,4 +1,4 @@
-; NR3DS v0.002 - simple vertex-color 3D shader
+; NR3DS v0.004 - simple vertex-color 3D shader
 
 .fvec projection[4], modelView[4]
 

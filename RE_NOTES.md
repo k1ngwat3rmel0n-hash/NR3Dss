@@ -79,3 +79,6 @@ The following are intentionally still approximations:
 - per-car serialized mass/gear/final-drive/tire configuration.
 
 These will be replaced incrementally while keeping the 3DS implementation cheap.
+
+## v0.004 implementation note
+Traffic and speed-reactive camera behavior are original lightweight systems for the 3DS prototype; they are not claimed to be recovered NIGHT-RUNNERS code. The underlying engine/tire/turbo behavior remains the previously documented clean reimplementation based on observed IL2CPP behavior.

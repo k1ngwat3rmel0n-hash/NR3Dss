@@ -3,6 +3,7 @@
 #include <cstdio>
 #include <cmath>
 #include <cstring>
+#include <array>
 
 #include "vshader_shbin.h"
 #include "nr_physics.hpp"
@@ -19,8 +20,16 @@ namespace {
 
 constexpr u32 CLEAR_COLOR = 0x02040AFF;
 constexpr int kCubeVerts = 36;
+constexpr int kTrafficCount = 6;
 
 struct Vertex { float x, y, z; };
+
+struct TrafficCar {
+    float laneX;
+    float distanceM;
+    float speedKph;
+    float r, g, b;
+};
 
 static const Vertex kCube[kCubeVerts] = {
     {-0.5f,-0.5f, 0.5f}, { 0.5f,-0.5f, 0.5f}, { 0.5f, 0.5f, 0.5f},
@@ -46,6 +55,10 @@ void* gVbo = nullptr;
 
 float clampf(float v, float lo, float hi) {
     return v < lo ? lo : (v > hi ? hi : v);
+}
+
+float lerpf(float a, float b, float t) {
+    return a + (b - a) * clampf(t, 0.0f, 1.0f);
 }
 
 void setColor(float r, float g, float b, float a = 1.0f) {
@@ -81,9 +94,6 @@ void sceneInit() {
     AttrInfo_AddFixed(attrInfo, 1);
     setColor(1, 1, 1, 1);
 
-    Mtx_PerspTilt(&gProjection, C3D_AngleFromDegrees(62.0f),
-                  C3D_AspectRatioTop, 0.05f, 300.0f, false);
-
     gVbo = linearAlloc(sizeof(kCube));
     std::memcpy(gVbo, kCube, sizeof(kCube));
 
@@ -106,12 +116,64 @@ void sceneExit() {
     if (gShaderDvlb) DVLB_Free(gShaderDvlb);
 }
 
-void drawHighway(const nr3ds::Telemetry& s) {
+void updateProjection(float speedKph) {
+    const float speedT = clampf(speedKph / 220.0f, 0.0f, 1.0f);
+    const float fov = lerpf(60.0f, 67.0f, speedT);
+    Mtx_PerspTilt(&gProjection, C3D_AngleFromDegrees(fov),
+                  C3D_AspectRatioTop, 0.05f, 300.0f, false);
+}
+
+std::array<TrafficCar, kTrafficCount> makeTraffic() {
+    return {{
+        {-3.8f,  28.0f,  88.0f, 0.10f, 0.22f, 0.62f},
+        { 0.0f,  46.0f, 104.0f, 0.50f, 0.50f, 0.54f},
+        { 3.8f,  68.0f,  76.0f, 0.08f, 0.50f, 0.22f},
+        {-3.8f,  92.0f, 118.0f, 0.62f, 0.10f, 0.10f},
+        { 0.0f, 125.0f,  96.0f, 0.46f, 0.18f, 0.62f},
+        { 3.8f, 158.0f, 112.0f, 0.68f, 0.52f, 0.12f},
+    }};
+}
+
+void updateTraffic(std::array<TrafficCar, kTrafficCount>& traffic,
+                   const nr3ds::Telemetry& s,
+                   float dt) {
+    for (int i = 0; i < kTrafficCount; ++i) {
+        auto& t = traffic[std::size_t(i)];
+        const float relMps = (t.speedKph - s.speedKph) / 3.6f;
+        t.distanceM += relMps * dt;
+
+        if (t.distanceM < -12.0f) {
+            t.distanceM = 95.0f + float((i * 29) % 85);
+        } else if (t.distanceM > 205.0f) {
+            t.distanceM = 55.0f + float((i * 31) % 110);
+        }
+    }
+}
+
+void drawTrafficCar(const TrafficCar& t, float cameraX) {
+    if (t.distanceM < -2.0f || t.distanceM > 190.0f) return;
+
+    const float z = -5.2f - t.distanceM;
+    const float fog = 1.0f - clampf(t.distanceM / 220.0f, 0.0f, 0.82f);
+    const float x = t.laneX - cameraX;
+
+    drawCube(x, -0.66f, z, 1.45f, 0.38f, 2.85f, 0.0f,
+             t.r * fog, t.g * fog, t.b * fog);
+    drawCube(x, -0.29f, z - 0.12f, 1.08f, 0.30f, 1.25f, 0.0f,
+             0.05f * fog, 0.08f * fog, 0.11f * fog);
+
+    drawCube(x - 0.44f, -0.51f, z + 1.47f, 0.20f, 0.10f, 0.06f, 0.0f,
+             1.0f * fog, 0.02f * fog, 0.01f * fog);
+    drawCube(x + 0.44f, -0.51f, z + 1.47f, 0.20f, 0.10f, 0.06f, 0.0f,
+             1.0f * fog, 0.02f * fog, 0.01f * fog);
+}
+
+void drawHighway(const nr3ds::Telemetry& s,
+                 const std::array<TrafficCar, kTrafficCount>& traffic,
+                 bool braking) {
     const float segLen = 10.0f;
     const float scroll = std::fmod(std::fabs(s.posY), segLen);
 
-    // Keep the car close to the center of the screen instead of letting it
-    // disappear off the side. The road/world shifts beneath a soft chase camera.
     const float worldCarX = clampf(s.posX, -5.0f, 5.0f);
     const float cameraX = worldCarX * 0.84f;
     const float carX = worldCarX - cameraX;
@@ -120,7 +182,6 @@ void drawHighway(const nr3ds::Telemetry& s) {
         const float z = -7.0f - float(i) * segLen + scroll;
         const float fog = 1.0f - clampf(float(i) / 26.0f, 0.0f, 0.86f);
 
-        // Highway deck and barriers.
         drawCube(-cameraX, -1.35f, z, 12.0f, 0.12f, segLen + 0.15f, 0.0f,
                  0.085f * fog, 0.095f * fog, 0.12f * fog);
         drawCube(-6.25f - cameraX, -0.72f, z, 0.20f, 0.70f, segLen, 0.0f,
@@ -128,7 +189,6 @@ void drawHighway(const nr3ds::Telemetry& s) {
         drawCube( 6.25f - cameraX, -0.72f, z, 0.20f, 0.70f, segLen, 0.0f,
                  0.25f * fog, 0.27f * fog, 0.31f * fog);
 
-        // Broken lane markings.
         if ((i & 1) == 0) {
             drawCube(-2.0f - cameraX, -1.20f, z, 0.09f, 0.025f, 3.3f, 0.0f,
                      0.84f * fog, 0.82f * fog, 0.68f * fog);
@@ -136,7 +196,6 @@ void drawHighway(const nr3ds::Telemetry& s) {
                      0.84f * fog, 0.82f * fog, 0.68f * fog);
         }
 
-        // Street lights.
         if ((i % 3) == 1) {
             drawCube(-8.0f - cameraX, 0.1f, z, 0.18f, 2.6f, 0.18f, 0.0f,
                      0.10f * fog, 0.14f * fog, 0.18f * fog);
@@ -148,8 +207,6 @@ void drawHighway(const nr3ds::Telemetry& s) {
                      0.90f * fog, 0.66f * fog, 0.24f * fog);
         }
 
-        // Very cheap skyline blocks to give the road depth and NIGHT-RUNNERS-ish
-        // urban atmosphere without using textures yet.
         if ((i % 4) == 0) {
             const float hL = 3.0f + float((i * 7) % 5) * 0.8f;
             const float hR = 2.5f + float((i * 5) % 6) * 0.75f;
@@ -161,7 +218,6 @@ void drawHighway(const nr3ds::Telemetry& s) {
                      0.04f * fog, 0.05f * fog, 0.075f * fog);
         }
 
-        // Occasional overhead gantry/sign silhouette.
         if ((i % 9) == 5) {
             drawCube(-cameraX, 2.5f, z, 13.5f, 0.15f, 0.20f, 0.0f,
                      0.12f * fog, 0.16f * fog, 0.18f * fog);
@@ -176,15 +232,20 @@ void drawHighway(const nr3ds::Telemetry& s) {
         }
     }
 
-    // Player car: still primitive geometry, but now it remains in the chase-camera
-    // frame while the world shifts around it.
+    for (const auto& t : traffic) {
+        drawTrafficCar(t, cameraX);
+    }
+
+    // Cheap headlight pool on the pavement. It is intentionally geometry-only.
+    drawCube(carX, -1.17f, -11.5f, 4.7f, 0.018f, 9.5f, 0.0f,
+             0.22f, 0.20f, 0.12f);
+
     const float carYaw = clampf(-s.driftAngleDeg * 0.012f, -0.45f, 0.45f);
     drawCube(carX, -0.63f, -5.2f, 1.55f, 0.42f, 3.2f, carYaw,
              0.78f, 0.035f, 0.025f);
     drawCube(carX, -0.22f, -5.34f, 1.18f, 0.34f, 1.42f, carYaw,
              0.055f, 0.10f, 0.14f);
 
-    // Wheels.
     drawCube(carX - 0.83f, -0.78f, -4.15f, 0.22f, 0.32f, 0.52f, carYaw,
              0.015f, 0.015f, 0.018f);
     drawCube(carX + 0.83f, -0.78f, -4.15f, 0.22f, 0.32f, 0.52f, carYaw,
@@ -194,11 +255,11 @@ void drawHighway(const nr3ds::Telemetry& s) {
     drawCube(carX + 0.83f, -0.78f, -6.18f, 0.22f, 0.32f, 0.52f, carYaw,
              0.015f, 0.015f, 0.018f);
 
-    // Tail lamps and a cheap glow strip.
+    const float brakeGlow = braking ? 1.0f : 0.68f;
     drawCube(carX - 0.47f, -0.48f, -3.57f, 0.24f, 0.12f, 0.07f, carYaw,
-             1.0f, 0.025f, 0.01f);
+             brakeGlow, 0.025f, 0.01f);
     drawCube(carX + 0.47f, -0.48f, -3.57f, 0.24f, 0.12f, 0.07f, carYaw,
-             1.0f, 0.025f, 0.01f);
+             brakeGlow, 0.025f, 0.01f);
 }
 
 } // namespace
@@ -216,8 +277,9 @@ int main(int argc, char** argv) {
 
     sceneInit();
     Vehicle car;
+    auto traffic = makeTraffic();
 
-    std::printf("NR3DS v0.003 - chase camera test\n");
+    std::printf("NR3DS v0.004 - traffic test\n");
     std::printf("A gas | B brake | X handbrake\n");
     std::printf("L/R shift | Circle Pad steer\n");
     std::printf("START exit\n");
@@ -239,15 +301,18 @@ int main(int argc, char** argv) {
         in.shiftDown = (down & KEY_L) != 0;
         in.shiftUp = (down & KEY_R) != 0;
 
-        car.step(in, 1.0f / 60.0f);
+        constexpr float dt = 1.0f / 60.0f;
+        car.step(in, dt);
         const auto& s = car.telemetry();
+        updateTraffic(traffic, s, dt);
+        updateProjection(s.speedKph);
 
         C3D_FrameBegin(C3D_FRAME_SYNCDRAW);
         C3D_RenderTargetClear(top, C3D_CLEAR_ALL, CLEAR_COLOR, 0);
         C3D_FrameDrawOn(top);
         C3D_BindProgram(&gProgram);
         C3D_FVUnifMtx4x4(GPU_VERTEX_SHADER, gLocProjection, &gProjection);
-        drawHighway(s);
+        drawHighway(s, traffic, in.brake > 0.1f);
         C3D_FrameEnd(0);
 
         std::printf("\x1b[6;1HSpeed: %6.1f km/h   \x1b[K", s.speedKph);
@@ -255,7 +320,8 @@ int main(int argc, char** argv) {
         std::printf("\x1b[8;1HTurbo: %5.2f  Slip: %5.2f\x1b[K", s.turboSpool, s.rearSlip);
         std::printf("\x1b[9;1HDrift: %6.1f deg       \x1b[K", s.driftAngleDeg);
         std::printf("\x1b[10;1HTire:  %5.2f  HB: %5.2f\x1b[K", s.tireTemp, s.handbrakeTimer);
-        std::printf("\x1b[12;1HCPU: %6.2f%% GPU: %6.2f%%\x1b[K",
+        std::printf("\x1b[11;1HTraffic: %d cars      \x1b[K", kTrafficCount);
+        std::printf("\x1b[13;1HCPU: %6.2f%% GPU: %6.2f%%\x1b[K",
                     C3D_GetProcessingTime() * 6.0f,
                     C3D_GetDrawingTime() * 6.0f);
     }
