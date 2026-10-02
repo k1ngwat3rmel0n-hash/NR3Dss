@@ -1,20 +1,20 @@
-# NR3DS v0.005
+# NR3DS v0.006
 
 Old 3DS-oriented NIGHT-RUNNERS-style driving prototype.
 
-This version moves the project from a straight traffic test toward an actual driving loop:
+This build keeps the v0.005 curved highway, traffic AI and collision systems and adds the requested **high-speed steering precision fix**.
 
-- Citro3D perspective highway renderer
-- soft chase camera
-- speed-sensitive FOV
-- lightweight engine / drivetrain / tire model
-- six moving traffic cars
-- deterministic traffic lane-changing AI
-- player/traffic collision response
-- road-edge collision response
-- simple curving highway presentation
-- street lights, skyline blocks, gantries, headlights and brake lights
-- SELECT resets the run
+## What changed
+
+- speed-dependent steering sensitivity
+- larger steering deadzone only at high speed
+- progressive input curve around the Circle Pad center
+- steering-rate smoothing so tiny thumb movements do not snap the car across a lane
+- maximum steering angle reduced further at highway speed
+- drift/handbrake mode relaxes the filter so countersteering still works
+- bottom-screen filtered steering telemetry for tuning
+
+The intended behavior is responsive below ~50 km/h, progressively calmer above ~80 km/h, and significantly easier to place within a lane above 160 km/h.
 
 ## Controls
 
@@ -28,8 +28,6 @@ This version moves the project from a straight traffic test toward an actual dri
 
 ## Build
 
-The GitHub Actions workflow builds with the devkitPro devkitARM container. Locally, with devkitPro `3ds-dev` installed:
-
 ```sh
 cd 3ds
 rm -rf build
@@ -39,11 +37,11 @@ make
 Expected output:
 
 ```text
-nr3ds_v005.3dsx
+nr3ds_v006.3dsx
 ```
 
 ## Fidelity note
 
-The physics core contains behavior reconstructed from the supplied NIGHT-RUNNERS IL2CPP build, but the original Unity serialized AnimationCurve keyframes have not yet been extracted. Current torque/turbo/tire curves remain temporary approximations. The chassis and collision model are lightweight 3DS-specific substitutes rather than PhysX.
+The physics core contains behavior reconstructed from the supplied NIGHT-RUNNERS IL2CPP build, while chassis, road, traffic, collisions and this steering filter are lightweight 3DS-specific implementations. Original Unity serialized AnimationCurve keyframes have not yet been extracted.
 
 No original NIGHT-RUNNERS art/audio assets are included.

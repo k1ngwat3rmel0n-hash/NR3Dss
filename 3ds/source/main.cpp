@@ -417,7 +417,7 @@ int main(int argc, char** argv) {
     float collisionCooldown = 0.0f;
     float wallCooldown = 0.0f;
 
-    std::printf("NR3DS v0.005 - road + AI test\n");
+    std::printf("NR3DS v0.006 - precision steering\n");
     std::printf("A gas | B brake | X handbrake\n");
     std::printf("L/R shift | Circle Pad steer\n");
     std::printf("SELECT reset | START exit\n");
@@ -480,9 +480,10 @@ int main(int argc, char** argv) {
         std::printf("\x1b[8;1HTurbo: %5.2f  Slip: %5.2f\x1b[K", s.turboSpool, s.rearSlip);
         std::printf("\x1b[9;1HDrift: %6.1f deg       \x1b[K", s.driftAngleDeg);
         std::printf("\x1b[10;1HTire:  %5.2f  HB: %5.2f\x1b[K", s.tireTemp, s.handbrakeTimer);
-        std::printf("\x1b[11;1HTraffic: %d  Hits: %d/%d  \x1b[K",
+        std::printf("\x1b[11;1HSteer: %6.2f filtered   \x1b[K", s.steerFiltered);
+        std::printf("\x1b[12;1HTraffic: %d  Hits: %d/%d  \x1b[K",
                     kTrafficCount, collisionCount, wallHitCount);
-        std::printf("\x1b[13;1HCPU: %6.2f%% GPU: %6.2f%%\x1b[K",
+        std::printf("\x1b[14;1HCPU: %6.2f%% GPU: %6.2f%%\x1b[K",
                     C3D_GetProcessingTime() * 6.0f,
                     C3D_GetDrawingTime() * 6.0f);
     }

@@ -1,21 +1,21 @@
 # NR3DS roadmap
 
-## v0.005 - current
-- curved road presentation
-- moving traffic
-- lane-change AI
-- traffic collisions
-- road-edge response
+## v0.006 - current
+- curved highway presentation
+- moving traffic + lane-change AI
+- traffic and road-edge collisions
 - chase camera
+- high-speed precision steering
+- drift-aware countersteer release
 
-## v0.006
+## v0.007
 - proper road spline/chunk system
 - traffic occupancy grid
 - basic opponent racer
 - start/finish race loop
 - near-miss / collision events
 
-## v0.007
+## v0.008
 - low-poly car mesh pipeline
 - texture atlas support
 - improved road materials/signage
@@ -25,5 +25,5 @@
 - garage
 - tuning
 - progression/save system
-- more NIGHT-RUNNERS-derived handling curves after serialized asset extraction
+- recovered serialized torque/turbo/tire curves
 - Old 3DS hardware profiling and optimization

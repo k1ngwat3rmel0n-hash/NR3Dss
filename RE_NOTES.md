@@ -13,3 +13,6 @@ The portable physics core is based on behavior inferred from the supplied IL2CPP
 The original Unity serialized curve keyframes are still not present in this project. Values in `Vehicle::makeDefaultConfig()` are placeholders chosen to keep the prototype stable until those curves are extracted.
 
 v0.005 adds original lightweight 3DS-side systems for traffic lane changing, collisions, road-edge response and visual highway curvature. These are not claimed to be recovered NIGHT-RUNNERS implementations.
+
+
+v0.006 adds an original 3DS-side high-speed steering filter. It is intentionally separate from the recovered NIGHT-RUNNERS handling logic: speed-dependent deadzone, center-response exponent, steer-rate limiting and a drift-aware bypass are used to improve Circle Pad precision at highway speeds.

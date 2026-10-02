@@ -7,13 +7,13 @@ endif
 TOPDIR ?= $(CURDIR)
 include $(DEVKITARM)/3ds_rules
 
-TARGET      := nr3ds_v005
+TARGET      := nr3ds_v006
 BUILD       := build
 SOURCES     := source ../core
 DATA        :=
 INCLUDES    := ../core
 
-APP_TITLE       := NR3DS v0.005
+APP_TITLE       := NR3DS v0.006
 APP_DESCRIPTION := Curved highway, traffic AI and collision prototype
 APP_AUTHOR      := NR3DS project
 

@@ -104,6 +104,7 @@ void Vehicle::reset() {
     lastSpeedMps_ = 0.0f;
     lateralVelocity_ = 0.0f;
     yawRate_ = 0.0f;
+    filteredSteer_ = 0.0f;
     gearIndex_ = 0;
 }
 
@@ -294,9 +295,36 @@ void Vehicle::integrateChassis(const InputState& in, float dt) {
     t_.speedMps = std::max(0.0f, t_.speedMps + (net / cfg_.massKg) * dt);
     t_.speedKph = t_.speedMps * 3.6f;
 
-    const float speedSteerT = clamp01(t_.speedKph / 160.0f);
-    const float maxSteerDeg = lerp(cfg_.maxSteerDegLow, cfg_.maxSteerDegHigh, speedSteerT);
-    const float steerAngle = deg2rad(maxSteerDeg * steerInput);
+    // High-speed steering precision layer. At highway speed the center of the
+    // Circle Pad becomes much finer, the maximum road-wheel angle drops, and
+    // steering changes are rate-limited. During a real slide/handbrake event we
+    // deliberately relax the filtering so countersteer stays responsive.
+    const float precisionT = clamp01((t_.speedKph - 55.0f) / 165.0f);
+    const float driftGain = clamp01(t_.rearSlip * 1.35f + clamp01(in.handbrake) * 0.55f);
+    const float driftRelease = clamp01(driftGain * 1.6f);
+
+    float deadzone = lerp(cfg_.steerDeadzoneLow, cfg_.steerDeadzoneHigh, precisionT);
+    const float rawAbs = std::fabs(steerInput);
+    float normalized = 0.0f;
+    if (rawAbs > deadzone) {
+        normalized = (rawAbs - deadzone) / std::max(1.0f - deadzone, 0.001f);
+    }
+
+    const float exponent = lerp(1.0f, cfg_.steerCurveHighSpeed, precisionT * (1.0f - 0.65f * driftRelease));
+    float shapedSteer = signf(steerInput) * std::pow(clamp01(normalized), exponent);
+    shapedSteer = lerp(shapedSteer, steerInput, 0.55f * driftRelease);
+
+    float steerRate = lerp(cfg_.steerRateLow, cfg_.steerRateHigh, precisionT);
+    steerRate = lerp(steerRate, cfg_.steerRateLow * 1.15f, driftRelease);
+    const float maxStep = steerRate * dt;
+    filteredSteer_ += clampf(shapedSteer - filteredSteer_, -maxStep, maxStep);
+    filteredSteer_ = clampf(filteredSteer_, -1.0f, 1.0f);
+    t_.steerFiltered = filteredSteer_;
+
+    const float speedSteerT = clamp01(t_.speedKph / 190.0f);
+    float maxSteerDeg = lerp(cfg_.maxSteerDegLow, cfg_.maxSteerDegHigh, speedSteerT);
+    maxSteerDeg = lerp(maxSteerDeg, std::max(maxSteerDeg, 11.0f), 0.55f * driftRelease);
+    const float steerAngle = deg2rad(maxSteerDeg * filteredSteer_);
 
     // Bicycle model baseline, softened by front grip and with rear-slip drift contribution.
     float desiredYaw = 0.0f;
@@ -305,8 +333,7 @@ void Vehicle::integrateChassis(const InputState& in, float dt) {
     }
     desiredYaw *= clampf(t_.frontSideGrip, 0.3f, 1.4f);
 
-    const float driftGain = clamp01(t_.rearSlip * 1.35f + clamp01(in.handbrake) * 0.55f);
-    const float steerDirection = signf(steerInput);
+    const float steerDirection = signf(filteredSteer_);
     const float driftYaw = steerDirection * driftGain * lerp(0.2f, 1.6f, clamp01(t_.speedKph / 100.0f));
 
     const float targetYaw = desiredYaw + driftYaw;

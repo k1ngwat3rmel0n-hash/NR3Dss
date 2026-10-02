@@ -45,7 +45,12 @@ struct VehicleConfig {
     float frontGrip = 1.08f;
     float rearGrip = 1.02f;
     float maxSteerDegLow = 32.0f;
-    float maxSteerDegHigh = 10.0f;
+    float maxSteerDegHigh = 4.8f;
+    float steerDeadzoneLow = 0.035f;
+    float steerDeadzoneHigh = 0.095f;
+    float steerCurveHighSpeed = 2.15f;
+    float steerRateLow = 10.0f;
+    float steerRateHigh = 3.2f;
 
     float turboMaxExtraHp = 105.0f;
     int turboLevel = 2;
@@ -73,6 +78,7 @@ struct Telemetry {
     float rearSlip = 0.0f;
     float driftAngleDeg = 0.0f;
     float handbrakeTimer = 0.0f;
+    float steerFiltered = 0.0f;
 
     float posX = 0.0f;
     float posY = 0.0f;
@@ -105,6 +111,7 @@ private:
     float lastSpeedMps_ = 0.0f;
     float lateralVelocity_ = 0.0f;
     float yawRate_ = 0.0f;
+    float filteredSteer_ = 0.0f;
 
     int gearIndex_ = 0; // 0-based forward gear
 
