@@ -1,0 +1,28 @@
+name: Build NR3DS
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container:
+      image: devkitpro/devkitarm:latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build 3DS
+        run: |
+          cd 3ds
+          make
+
+      - name: Upload build
+        uses: actions/upload-artifact@v4
+        with:
+          name: NR3DS
+          path: |
+            3ds/*.3dsx
+            3ds/*.elf
+            3ds/*.smdh
