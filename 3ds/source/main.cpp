@@ -17,7 +17,7 @@ namespace {
      GX_TRANSFER_IN_FORMAT(GX_TRANSFER_FMT_RGBA8) | GX_TRANSFER_OUT_FORMAT(GX_TRANSFER_FMT_RGB8) | \
      GX_TRANSFER_SCALING(GX_TRANSFER_SCALE_NO))
 
-constexpr u32 CLEAR_COLOR = 0x03050BFF;
+constexpr u32 CLEAR_COLOR = 0x02040AFF;
 constexpr int kCubeVerts = 36;
 
 struct Vertex { float x, y, z; };
@@ -96,7 +96,7 @@ void sceneInit() {
 
     C3D_TexEnv* env = C3D_GetTexEnv(0);
     C3D_TexEnvInit(env);
-    C3D_TexEnvSrc(env, C3D_Both, GPU_PRIMARY_COLOR, GPU_PRIMARY_COLOR, GPU_PRIMARY_COLOR);
+    C3D_TexEnvSrc(env, C3D_Both, GPU_PRIMARY_COLOR, 0, 0);
     C3D_TexEnvFunc(env, C3D_Both, GPU_REPLACE);
 }
 
@@ -109,47 +109,96 @@ void sceneExit() {
 void drawHighway(const nr3ds::Telemetry& s) {
     const float segLen = 10.0f;
     const float scroll = std::fmod(std::fabs(s.posY), segLen);
-    const float carX = clampf(s.posX, -5.0f, 5.0f);
 
-    for (int i = 0; i < 22; ++i) {
+    // Keep the car close to the center of the screen instead of letting it
+    // disappear off the side. The road/world shifts beneath a soft chase camera.
+    const float worldCarX = clampf(s.posX, -5.0f, 5.0f);
+    const float cameraX = worldCarX * 0.84f;
+    const float carX = worldCarX - cameraX;
+
+    for (int i = 0; i < 24; ++i) {
         const float z = -7.0f - float(i) * segLen + scroll;
-        const float fog = 1.0f - clampf(float(i) / 24.0f, 0.0f, 0.82f);
+        const float fog = 1.0f - clampf(float(i) / 26.0f, 0.0f, 0.86f);
 
-        drawCube(0.0f, -1.35f, z, 12.0f, 0.12f, segLen + 0.15f, 0.0f,
-                 0.10f * fog, 0.11f * fog, 0.14f * fog);
-        drawCube(-6.25f, -0.72f, z, 0.20f, 0.70f, segLen, 0.0f,
-                 0.28f * fog, 0.30f * fog, 0.34f * fog);
-        drawCube( 6.25f, -0.72f, z, 0.20f, 0.70f, segLen, 0.0f,
-                 0.28f * fog, 0.30f * fog, 0.34f * fog);
+        // Highway deck and barriers.
+        drawCube(-cameraX, -1.35f, z, 12.0f, 0.12f, segLen + 0.15f, 0.0f,
+                 0.085f * fog, 0.095f * fog, 0.12f * fog);
+        drawCube(-6.25f - cameraX, -0.72f, z, 0.20f, 0.70f, segLen, 0.0f,
+                 0.25f * fog, 0.27f * fog, 0.31f * fog);
+        drawCube( 6.25f - cameraX, -0.72f, z, 0.20f, 0.70f, segLen, 0.0f,
+                 0.25f * fog, 0.27f * fog, 0.31f * fog);
 
+        // Broken lane markings.
         if ((i & 1) == 0) {
-            drawCube(-2.0f, -1.20f, z, 0.09f, 0.025f, 3.3f, 0.0f,
-                     0.82f * fog, 0.80f * fog, 0.64f * fog);
-            drawCube( 2.0f, -1.20f, z, 0.09f, 0.025f, 3.3f, 0.0f,
-                     0.82f * fog, 0.80f * fog, 0.64f * fog);
+            drawCube(-2.0f - cameraX, -1.20f, z, 0.09f, 0.025f, 3.3f, 0.0f,
+                     0.84f * fog, 0.82f * fog, 0.68f * fog);
+            drawCube( 2.0f - cameraX, -1.20f, z, 0.09f, 0.025f, 3.3f, 0.0f,
+                     0.84f * fog, 0.82f * fog, 0.68f * fog);
         }
 
+        // Street lights.
         if ((i % 3) == 1) {
-            drawCube(-8.0f, 0.1f, z, 0.18f, 2.6f, 0.18f, 0.0f,
-                     0.12f * fog, 0.16f * fog, 0.20f * fog);
-            drawCube( 8.0f, 0.1f, z, 0.18f, 2.6f, 0.18f, 0.0f,
-                     0.12f * fog, 0.16f * fog, 0.20f * fog);
-            drawCube(-8.0f, 1.5f, z, 0.35f, 0.12f, 0.35f, 0.0f,
-                     0.75f * fog, 0.58f * fog, 0.22f * fog);
-            drawCube( 8.0f, 1.5f, z, 0.35f, 0.12f, 0.35f, 0.0f,
-                     0.75f * fog, 0.58f * fog, 0.22f * fog);
+            drawCube(-8.0f - cameraX, 0.1f, z, 0.18f, 2.6f, 0.18f, 0.0f,
+                     0.10f * fog, 0.14f * fog, 0.18f * fog);
+            drawCube( 8.0f - cameraX, 0.1f, z, 0.18f, 2.6f, 0.18f, 0.0f,
+                     0.10f * fog, 0.14f * fog, 0.18f * fog);
+            drawCube(-8.0f - cameraX, 1.5f, z, 0.35f, 0.12f, 0.35f, 0.0f,
+                     0.90f * fog, 0.66f * fog, 0.24f * fog);
+            drawCube( 8.0f - cameraX, 1.5f, z, 0.35f, 0.12f, 0.35f, 0.0f,
+                     0.90f * fog, 0.66f * fog, 0.24f * fog);
+        }
+
+        // Very cheap skyline blocks to give the road depth and NIGHT-RUNNERS-ish
+        // urban atmosphere without using textures yet.
+        if ((i % 4) == 0) {
+            const float hL = 3.0f + float((i * 7) % 5) * 0.8f;
+            const float hR = 2.5f + float((i * 5) % 6) * 0.75f;
+            drawCube(-13.0f - cameraX, -1.0f + hL * 0.5f, z - 3.0f,
+                     4.0f, hL, 5.0f, 0.0f,
+                     0.035f * fog, 0.055f * fog, 0.085f * fog);
+            drawCube( 13.0f - cameraX, -1.0f + hR * 0.5f, z + 1.5f,
+                     4.5f, hR, 5.5f, 0.0f,
+                     0.04f * fog, 0.05f * fog, 0.075f * fog);
+        }
+
+        // Occasional overhead gantry/sign silhouette.
+        if ((i % 9) == 5) {
+            drawCube(-cameraX, 2.5f, z, 13.5f, 0.15f, 0.20f, 0.0f,
+                     0.12f * fog, 0.16f * fog, 0.18f * fog);
+            drawCube(-5.8f - cameraX, 0.7f, z, 0.16f, 3.5f, 0.16f, 0.0f,
+                     0.12f * fog, 0.16f * fog, 0.18f * fog);
+            drawCube( 5.8f - cameraX, 0.7f, z, 0.16f, 3.5f, 0.16f, 0.0f,
+                     0.12f * fog, 0.16f * fog, 0.18f * fog);
+            drawCube(-1.8f - cameraX, 2.25f, z - 0.12f, 2.5f, 0.65f, 0.12f, 0.0f,
+                     0.08f * fog, 0.26f * fog, 0.20f * fog);
+            drawCube( 2.2f - cameraX, 2.25f, z - 0.12f, 2.8f, 0.65f, 0.12f, 0.0f,
+                     0.08f * fog, 0.20f * fog, 0.30f * fog);
         }
     }
 
+    // Player car: still primitive geometry, but now it remains in the chase-camera
+    // frame while the world shifts around it.
     const float carYaw = clampf(-s.driftAngleDeg * 0.012f, -0.45f, 0.45f);
-    drawCube(carX, -0.58f, -5.2f, 1.55f, 0.45f, 3.2f, carYaw,
-             0.72f, 0.045f, 0.035f);
-    drawCube(carX, -0.18f, -5.25f, 1.20f, 0.38f, 1.45f, carYaw,
-             0.08f, 0.13f, 0.18f);
-    drawCube(carX - 0.45f, -0.47f, -3.57f, 0.22f, 0.12f, 0.06f, carYaw,
-             1.0f, 0.04f, 0.02f);
-    drawCube(carX + 0.45f, -0.47f, -3.57f, 0.22f, 0.12f, 0.06f, carYaw,
-             1.0f, 0.04f, 0.02f);
+    drawCube(carX, -0.63f, -5.2f, 1.55f, 0.42f, 3.2f, carYaw,
+             0.78f, 0.035f, 0.025f);
+    drawCube(carX, -0.22f, -5.34f, 1.18f, 0.34f, 1.42f, carYaw,
+             0.055f, 0.10f, 0.14f);
+
+    // Wheels.
+    drawCube(carX - 0.83f, -0.78f, -4.15f, 0.22f, 0.32f, 0.52f, carYaw,
+             0.015f, 0.015f, 0.018f);
+    drawCube(carX + 0.83f, -0.78f, -4.15f, 0.22f, 0.32f, 0.52f, carYaw,
+             0.015f, 0.015f, 0.018f);
+    drawCube(carX - 0.83f, -0.78f, -6.18f, 0.22f, 0.32f, 0.52f, carYaw,
+             0.015f, 0.015f, 0.018f);
+    drawCube(carX + 0.83f, -0.78f, -6.18f, 0.22f, 0.32f, 0.52f, carYaw,
+             0.015f, 0.015f, 0.018f);
+
+    // Tail lamps and a cheap glow strip.
+    drawCube(carX - 0.47f, -0.48f, -3.57f, 0.24f, 0.12f, 0.07f, carYaw,
+             1.0f, 0.025f, 0.01f);
+    drawCube(carX + 0.47f, -0.48f, -3.57f, 0.24f, 0.12f, 0.07f, carYaw,
+             1.0f, 0.025f, 0.01f);
 }
 
 } // namespace
@@ -168,7 +217,7 @@ int main(int argc, char** argv) {
     sceneInit();
     Vehicle car;
 
-    std::printf("NR3DS v0.002 - first Citro3D test\n");
+    std::printf("NR3DS v0.003 - chase camera test\n");
     std::printf("A gas | B brake | X handbrake\n");
     std::printf("L/R shift | Circle Pad steer\n");
     std::printf("START exit\n");

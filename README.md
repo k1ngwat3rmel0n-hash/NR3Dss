@@ -23,3 +23,13 @@ make
 ```
 
 Expected output: `nr3ds_v002.3dsx`.
+
+
+## v0.003 additions
+
+- Soft chase camera keeps the car in frame.
+- Highway/world shifts laterally with the player.
+- Primitive wheels and improved car silhouette.
+- Cheap skyline buildings.
+- Overhead gantries/signs.
+- Retains Old 3DS-oriented simple geometry and fixed-function color shading.
