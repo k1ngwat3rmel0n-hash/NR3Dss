@@ -16,6 +16,7 @@ jobs:
       - name: Build 3DS
         run: |
           cd 3ds
+          rm -rf build
           make
 
       - name: Upload build
