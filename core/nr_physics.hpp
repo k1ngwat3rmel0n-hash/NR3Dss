@@ -89,6 +89,8 @@ public:
     const Telemetry& telemetry() const { return t_; }
     const VehicleConfig& config() const { return cfg_; }
     void setConfig(const VehicleConfig& cfg);
+    void applyImpact(float speedRetention, float lateralKick);
+    void constrainLateral(float minX, float maxX, float speedRetention);
 
     static VehicleConfig makeDefaultConfig();
 

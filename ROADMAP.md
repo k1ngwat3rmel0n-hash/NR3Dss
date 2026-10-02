@@ -1,17 +1,29 @@
 # NR3DS roadmap
 
-## v0.004 current
-- Citro3D highway renderer
+## v0.005 - current
+- curved road presentation
+- moving traffic
+- lane-change AI
+- traffic collisions
+- road-edge response
 - chase camera
-- primitive player car
-- six traffic cars
-- speed-reactive FOV
-- basic night atmosphere
 
-## next
-- traffic collision response
-- curved/streamed highway chunks
-- better car mesh and materials
-- opponent/race prototype
-- extract serialized NIGHT-RUNNERS tuning/curve data where practical
-- test on real Old 3DS hardware and establish hard frame/memory budgets
+## v0.006
+- proper road spline/chunk system
+- traffic occupancy grid
+- basic opponent racer
+- start/finish race loop
+- near-miss / collision events
+
+## v0.007
+- low-poly car mesh pipeline
+- texture atlas support
+- improved road materials/signage
+- simple audio engine prototype
+
+## later
+- garage
+- tuning
+- progression/save system
+- more NIGHT-RUNNERS-derived handling curves after serialized asset extraction
+- Old 3DS hardware profiling and optimization

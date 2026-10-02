@@ -63,6 +63,30 @@ void Vehicle::setConfig(const VehicleConfig& cfg) {
     reset();
 }
 
+void Vehicle::applyImpact(float speedRetention, float lateralKick) {
+    const float keep = clampf(speedRetention, 0.0f, 1.0f);
+    t_.speedMps *= keep;
+    t_.speedKph = t_.speedMps * 3.6f;
+    lateralVelocity_ += lateralKick;
+    yawRate_ += lateralKick * 0.08f;
+    t_.rearSlip = std::max(t_.rearSlip, 0.45f);
+}
+
+void Vehicle::constrainLateral(float minX, float maxX, float speedRetention) {
+    if (minX > maxX) std::swap(minX, maxX);
+    if (t_.posX < minX) {
+        t_.posX = minX;
+        lateralVelocity_ = std::fabs(lateralVelocity_) * 0.20f;
+        yawRate_ *= -0.25f;
+        applyImpact(speedRetention, 0.75f);
+    } else if (t_.posX > maxX) {
+        t_.posX = maxX;
+        lateralVelocity_ = -std::fabs(lateralVelocity_) * 0.20f;
+        yawRate_ *= -0.25f;
+        applyImpact(speedRetention, -0.75f);
+    }
+}
+
 void Vehicle::reset() {
     t_ = Telemetry{};
     t_.rpm = cfg_.idleRpm;
