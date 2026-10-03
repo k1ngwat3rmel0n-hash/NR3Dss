@@ -7,7 +7,7 @@ endif
 TOPDIR ?= $(CURDIR)
 include $(DEVKITARM)/3ds_rules
 
-TARGET      := nr3ds_v017
+TARGET      := nr3ds_v0171
 BUILD       := build
 SOURCES     := source ../core
 DATA        :=
@@ -15,7 +15,7 @@ INCLUDES    := ../core
 GRAPHICS    := gfx
 GFXBUILD    := $(BUILD)
 
-APP_TITLE       := NR3DS v0.017
+APP_TITLE       := NR3DS v0.017.1
 APP_DESCRIPTION := Source NIGHT-RUNNERS road and tunnel texture pass
 APP_AUTHOR      := NR3DS project
 

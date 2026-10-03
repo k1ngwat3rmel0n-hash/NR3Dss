@@ -1,38 +1,20 @@
-# NR3DS v0.017 — Source Textures
+# NR3DS v0.017.1 — Texture Pipeline Hotfix
 
-First real NIGHT-RUNNERS texture pass for the Old 3DS renderer.
+Hotfix for v0.017 freezing on the last garage frame after pressing Y.
 
-## What changed
+## Cause
 
-- Decoded the developer-authorized `_generic_ROAD_2_ALB` Texture2D from
-  `sharedassets1.assets` / its `.resS` payload.
-- Decoded `generic_TUNNEL_GRUNGE_ALB 1` from `sharedassets2.assets`.
-- Selected repeat-friendly source regions and reduced each to 128x128.
-- `tex3ds` converts both images to small ETC1/T3X textures at build time.
-- Added UV-capable Citro3D rendering while retaining the existing vertex-color path.
-- Real source asphalt is now overlaid on the recovered C1 road deck.
-- Real source tunnel concrete is rendered on tunnel walls and ceiling.
-- Texture brightness is reduced offline for the night scene; the texture pass is
-  also multiplied by the existing distance fog.
-- v0.016.1 curved-wall and black-slab fixes are preserved.
-- The flat-colored HighRoad source stamping is temporarily disabled so it cannot
-  cover the new asphalt layer. The mesh remains in the asset catalog for the
-  later UV-preserving source-mesh conversion.
+The new source-texture renderer switches Citro3D from the normal fixed-color vertex
+pipeline to a textured UV pipeline for the asphalt/tunnel pass. The restore function
+contained an accidental recursive call to itself. Entering the expressway reached that
+function on the first road frame, recursively exhausted the stack, and therefore left
+the previously rendered garage frame on screen.
 
-## Still intentionally unchanged
+## Fix
 
-- Livisa body still uses the source mesh with flat materials; its material/UV pass comes next.
-- Source road-line atlas is still represented by geometry rather than its original texture UVs.
-- The real soundtrack is still only catalogued; the NDSP synth test remains until FSB5/Vorbis
-  is transcoded offline.
-- Some environment meshes remain road-local proxies until exact Unity scene transforms are applied.
+- Removed the recursive `setupColorPipeline()` call.
+- Explicitly restores the primary-color TexEnv combiner after the textured pass.
+- Keeps all v0.017 source textures, v0.016.1 curve fixes, source car, long C1 route,
+  traffic, race, garage and audio test.
 
-## Texture source notes
-
-See `tools/source_texture_extraction/README.md` and the preview images there.
-
-## Build
-
-GitHub Actions should produce:
-
-`nr3ds_v017.3dsx`
+Expected artifact: `nr3ds_v0171.3dsx`.

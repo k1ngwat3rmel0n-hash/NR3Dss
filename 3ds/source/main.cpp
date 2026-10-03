@@ -298,7 +298,15 @@ void setupColorPipeline() {
 
     bindPositionVbo(gVbo, sizeof(Vertex));
 
-    setupColorPipeline();
+    // Restore the fixed-color combiner after the textured road/tunnel pass.
+    // v0.017 accidentally called setupColorPipeline() recursively here, so the
+    // first expressway frame overflowed the stack and left the last garage frame
+    // visible. Keep this function strictly non-recursive.
+    C3D_TexEnv* env = C3D_GetTexEnv(0);
+    C3D_TexEnvInit(env);
+    C3D_TexEnvSrc(env, C3D_Both,
+                  GPU_PRIMARY_COLOR, GPU_PRIMARY_COLOR, GPU_PRIMARY_COLOR);
+    C3D_TexEnvFunc(env, C3D_Both, GPU_REPLACE);
 }
 
 void setupTexturedPipeline(void* vbo, C3D_Tex* texture) {
@@ -1751,14 +1759,14 @@ int main(int argc, char** argv) {
 
         if (rt.phase == RacePhase::Countdown) {
             const int count = std::max(1, int(std::ceil(rt.countdown)));
-            std::printf("\x1b[1;1HNR3DS v0.017 - SOURCE TEXTURES    \x1b[K");
+            std::printf("\x1b[1;1HNR3DS v0.017.1 - TEXTURE HOTFIX    \x1b[K");
             std::printf("\x1b[5;1HRACE: GET READY  %d          \x1b[K", count);
         } else if (rt.phase == RacePhase::Racing) {
-            std::printf("\x1b[1;1HNR3DS v0.017 - SOURCE TEXTURES    \x1b[K");
+            std::printf("\x1b[1;1HNR3DS v0.017.1 - TEXTURE HOTFIX    \x1b[K");
             std::printf("\x1b[5;1HRACE: GO  CP %d/%d             \x1b[K",
                         rt.checkpointIndex, int(RaceSession::kCheckpointCount));
         } else {
-            std::printf("\x1b[1;1HNR3DS v0.017 - SOURCE TEXTURES    \x1b[K");
+            std::printf("\x1b[1;1HNR3DS v0.017.1 - TEXTURE HOTFIX    \x1b[K");
             std::printf("\x1b[5;1HRESULT: %s                 \x1b[K",
                         rt.playerWon ? "YOU WIN +$1000" : "RIVAL WINS +$300");
             std::printf("\x1b[6;1HY=garage  SELECT=retry          \x1b[K");
