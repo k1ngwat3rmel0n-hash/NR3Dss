@@ -267,7 +267,7 @@ bool resolveTrafficCollision(Vehicle& car,
             float kick = (playerX <= t.laneX) ? -1.5f : 1.5f;
             if (std::fabs(playerX - t.laneX) < 0.15f)
                 kick = (i & 1) ? 1.5f : -1.5f;
-            car.applyImpact(0.56f, kick);
+            car.applyImpact(0.66f, kick * 0.72f);
             t.distanceM += 4.5f;
             t.speedKph *= 0.88f;
             cooldown = 0.70f;
@@ -417,7 +417,7 @@ int main(int argc, char** argv) {
     float collisionCooldown = 0.0f;
     float wallCooldown = 0.0f;
 
-    std::printf("NR3DS v0.006 - precision steering\n");
+    std::printf("NR3DS v0.007 - steering + wall slide\n");
     std::printf("A gas | B brake | X handbrake\n");
     std::printf("L/R shift | Circle Pad steer\n");
     std::printf("SELECT reset | START exit\n");
@@ -457,7 +457,7 @@ int main(int argc, char** argv) {
             ++wallHitCount;
             wallCooldown = 0.5f;
         }
-        car.constrainLateral(-5.1f, 5.1f, 0.74f);
+        car.constrainLateral(-5.1f, 5.1f, 0.93f);
 
         updateTraffic(traffic, car.telemetry(), dt);
         if (resolveTrafficCollision(car, traffic, collisionCooldown)) {
@@ -480,7 +480,7 @@ int main(int argc, char** argv) {
         std::printf("\x1b[8;1HTurbo: %5.2f  Slip: %5.2f\x1b[K", s.turboSpool, s.rearSlip);
         std::printf("\x1b[9;1HDrift: %6.1f deg       \x1b[K", s.driftAngleDeg);
         std::printf("\x1b[10;1HTire:  %5.2f  HB: %5.2f\x1b[K", s.tireTemp, s.handbrakeTimer);
-        std::printf("\x1b[11;1HSteer: %6.2f filtered   \x1b[K", s.steerFiltered);
+        std::printf("\x1b[11;1HSteer raw/filt: %5.2f/%5.2f \x1b[K", in.steer, s.steerFiltered);
         std::printf("\x1b[12;1HTraffic: %d  Hits: %d/%d  \x1b[K",
                     kTrafficCount, collisionCount, wallHitCount);
         std::printf("\x1b[14;1HCPU: %6.2f%% GPU: %6.2f%%\x1b[K",

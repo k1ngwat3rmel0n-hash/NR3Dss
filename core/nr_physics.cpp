@@ -74,16 +74,35 @@ void Vehicle::applyImpact(float speedRetention, float lateralKick) {
 
 void Vehicle::constrainLateral(float minX, float maxX, float speedRetention) {
     if (minX > maxX) std::swap(minX, maxX);
+
+    // Barrier contacts should scrub speed and straighten the car, not repeatedly
+    // bounce it back into the lane. The older implementation applied a lateral
+    // impact every frame while pinned against the wall, which could spin the car
+    // and bleed almost all speed. This version behaves more like a glancing wall
+    // slide: kill outward lateral motion, damp yaw, and only apply a modest speed
+    // penalty when the contact is meaningful.
     if (t_.posX < minX) {
         t_.posX = minX;
-        lateralVelocity_ = std::fabs(lateralVelocity_) * 0.20f;
-        yawRate_ *= -0.25f;
-        applyImpact(speedRetention, 0.75f);
+        const float outward = std::max(0.0f, -lateralVelocity_);
+        lateralVelocity_ = std::max(0.0f, lateralVelocity_) + outward * 0.05f;
+        yawRate_ *= 0.32f;
+        if (t_.headingRad < 0.0f) t_.headingRad *= 0.55f;
+        if (outward > 0.35f || std::fabs(t_.headingRad) > 0.08f) {
+            t_.speedMps *= clampf(speedRetention, 0.0f, 1.0f);
+            t_.speedKph = t_.speedMps * 3.6f;
+        }
+        t_.rearSlip = std::max(t_.rearSlip, 0.18f);
     } else if (t_.posX > maxX) {
         t_.posX = maxX;
-        lateralVelocity_ = -std::fabs(lateralVelocity_) * 0.20f;
-        yawRate_ *= -0.25f;
-        applyImpact(speedRetention, -0.75f);
+        const float outward = std::max(0.0f, lateralVelocity_);
+        lateralVelocity_ = std::min(0.0f, lateralVelocity_) - outward * 0.05f;
+        yawRate_ *= 0.32f;
+        if (t_.headingRad > 0.0f) t_.headingRad *= 0.55f;
+        if (outward > 0.35f || std::fabs(t_.headingRad) > 0.08f) {
+            t_.speedMps *= clampf(speedRetention, 0.0f, 1.0f);
+            t_.speedKph = t_.speedMps * 3.6f;
+        }
+        t_.rearSlip = std::max(t_.rearSlip, 0.18f);
     }
 }
 

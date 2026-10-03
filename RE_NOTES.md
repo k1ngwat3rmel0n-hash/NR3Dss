@@ -1,18 +1,5 @@
-# Reverse-engineering notes
+# Reverse-engineering / behavior notes
 
-The portable physics core is based on behavior inferred from the supplied IL2CPP build. Recovered systems already reflected in the prototype include:
+This project does not include original NIGHT-RUNNERS assets. The portable physics core uses independently written code informed by observed/reconstructed behavior from the supplied IL2CPP build.
 
-- engine torque shaping
-- engine inertia behavior
-- turbo spool / decay structure
-- heat soak and engine health power reduction
-- tire temperature state
-- gear/power-dependent grip trends
-- progressive handbrake grip behavior
-
-The original Unity serialized curve keyframes are still not present in this project. Values in `Vehicle::makeDefaultConfig()` are placeholders chosen to keep the prototype stable until those curves are extracted.
-
-v0.005 adds original lightweight 3DS-side systems for traffic lane changing, collisions, road-edge response and visual highway curvature. These are not claimed to be recovered NIGHT-RUNNERS implementations.
-
-
-v0.006 adds an original 3DS-side high-speed steering filter. It is intentionally separate from the recovered NIGHT-RUNNERS handling logic: speed-dependent deadzone, center-response exponent, steer-rate limiting and a drift-aware bypass are used to improve Circle Pad precision at highway speeds.
+v0.007 retains the recovered-inspired engine/turbo/tire/handbrake structure and adds an original 3DS-specific steering filter plus wall-slide collision response for playability.

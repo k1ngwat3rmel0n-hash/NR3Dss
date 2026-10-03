@@ -1,29 +1,19 @@
 # NR3DS roadmap
 
-## v0.006 - current
-- curved highway presentation
-- moving traffic + lane-change AI
-- traffic and road-edge collisions
+## Current: v0.007
+- 3D Citro3D highway
 - chase camera
-- high-speed precision steering
-- drift-aware countersteer release
+- curved road
+- traffic/lane changes
+- traffic + barrier collisions
+- speed-dependent steering precision
+- improved barrier sliding
 
-## v0.007
-- proper road spline/chunk system
-- traffic occupancy grid
-- basic opponent racer
-- start/finish race loop
-- near-miss / collision events
-
-## v0.008
-- low-poly car mesh pipeline
-- texture atlas support
-- improved road materials/signage
-- simple audio engine prototype
-
-## later
-- garage
-- tuning
-- progression/save system
-- recovered serialized torque/turbo/tire curves
-- Old 3DS hardware profiling and optimization
+## Next
+- better car mesh / silhouettes
+- road chunk system with larger curves and elevation
+- traffic spawn/density tuning
+- race opponent prototype
+- audio engine loop
+- garage/tuning screen
+- extract original serialized handling curves where legally/technically appropriate
