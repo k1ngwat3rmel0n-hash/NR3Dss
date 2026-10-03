@@ -9,11 +9,14 @@
 #include "vshader_shbin.h"
 #include "nr_physics.hpp"
 #include "nr_race.hpp"
+#include "nr_garage.hpp"
 
 using nr3ds::InputState;
 using nr3ds::Vehicle;
 using nr3ds::RaceSession;
 using nr3ds::RacePhase;
+using nr3ds::GarageState;
+using nr3ds::UpgradeKind;
 
 namespace {
 
@@ -26,6 +29,8 @@ constexpr u32 CLEAR_COLOR = 0x02040AFF;
 constexpr int kCubeVerts = 36;
 constexpr int kTrafficCount = 6;
 constexpr float kLaneWidth = 3.8f;
+
+enum class GameMode { Garage, Race };
 
 struct Vertex { float x, y, z; };
 
@@ -470,6 +475,98 @@ void drawHighway(const nr3ds::Telemetry& s,
              brakeGlow, 0.025f, 0.01f);
 }
 
+
+void drawGarageScene(const GarageState& garage, float spin) {
+    // Cheap native garage scene: floor, walls, fluorescent strips, cabinets and
+    // the same primitive player car on a display pad. No textures/assets needed.
+    drawCube(0.0f, -1.38f, -10.0f, 15.0f, 0.10f, 22.0f, 0.0f,
+             0.055f, 0.060f, 0.070f);
+    drawCube(0.0f, 3.2f, -20.5f, 15.0f, 9.0f, 0.20f, 0.0f,
+             0.035f, 0.040f, 0.050f);
+    drawCube(-7.3f, 2.0f, -11.0f, 0.20f, 7.0f, 20.0f, 0.0f,
+             0.045f, 0.050f, 0.060f);
+    drawCube( 7.3f, 2.0f, -11.0f, 0.20f, 7.0f, 20.0f, 0.0f,
+             0.045f, 0.050f, 0.060f);
+
+    // Ceiling light strips.
+    for (int i = 0; i < 4; ++i) {
+        const float z = -5.0f - float(i) * 5.0f;
+        drawCube(-3.0f, 4.2f, z, 2.8f, 0.08f, 0.22f, 0.0f,
+                 0.78f, 0.82f, 0.86f);
+        drawCube( 3.0f, 4.2f, z, 2.8f, 0.08f, 0.22f, 0.0f,
+                 0.78f, 0.82f, 0.86f);
+    }
+
+    // Tool cabinets / work benches.
+    drawCube(-5.7f, -0.35f, -10.5f, 2.0f, 1.7f, 3.2f, 0.0f,
+             0.18f, 0.055f, 0.045f);
+    drawCube( 5.7f, -0.35f, -10.5f, 2.0f, 1.7f, 3.2f, 0.0f,
+             0.06f, 0.10f, 0.16f);
+
+    // Car display pad. Upgrade levels subtly change the accent rings so a build
+    // has visible progression even before proper art/assets arrive.
+    const float upgradeGlow = 0.08f + 0.035f * float(
+        garage.engineLevel() + garage.turboLevel() + garage.tireLevel());
+    drawCube(0.0f, -1.20f, -7.2f, 4.8f, 0.08f, 7.0f, 0.0f,
+             0.10f + upgradeGlow, 0.10f, 0.12f + upgradeGlow * 0.5f);
+
+    const float yaw = std::sin(spin * 0.45f) * 0.13f;
+    drawCube(0.0f, -0.62f, -7.2f, 1.55f, 0.42f, 3.2f, yaw,
+             0.78f, 0.035f, 0.025f);
+    drawCube(0.0f, -0.21f, -7.35f, 1.18f, 0.34f, 1.42f, yaw,
+             0.055f, 0.10f, 0.14f);
+    drawCube(-0.83f, -0.78f, -6.15f, 0.22f, 0.32f, 0.52f, yaw,
+             0.015f, 0.015f, 0.018f);
+    drawCube( 0.83f, -0.78f, -6.15f, 0.22f, 0.32f, 0.52f, yaw,
+             0.015f, 0.015f, 0.018f);
+    drawCube(-0.83f, -0.78f, -8.18f, 0.22f, 0.32f, 0.52f, yaw,
+             0.015f, 0.015f, 0.018f);
+    drawCube( 0.83f, -0.78f, -8.18f, 0.22f, 0.32f, 0.52f, yaw,
+             0.015f, 0.015f, 0.018f);
+}
+
+void printUpgradeLine(int row, bool selected, const char* name,
+                      int level, int nextCost) {
+    if (nextCost < 0) {
+        std::printf("\x1b[%d;1H%c %-11s Lv%d  MAX          \x1b[K",
+                    row, selected ? '>' : ' ', name, level);
+    } else {
+        std::printf("\x1b[%d;1H%c %-11s Lv%d -> %d  $%d  \x1b[K",
+                    row, selected ? '>' : ' ', name, level, level + 1, nextCost);
+    }
+}
+
+void drawGarageHud(const GarageState& garage, int selection, const char* status) {
+    std::printf("\x1b[1;1HNR3DS v0.009 - GARAGE          \x1b[K");
+    std::printf("\x1b[2;1HCash: $%d   W/L: %d/%d        \x1b[K",
+                garage.cash(), garage.wins(), garage.losses());
+    std::printf("\x1b[3;1HDpad U/D select  A buy          \x1b[K");
+    std::printf("\x1b[4;1HDpad L/R tune   Y start race   \x1b[K");
+
+    printUpgradeLine(6, selection == 0, "ENGINE", garage.engineLevel(),
+                     garage.nextCost(UpgradeKind::Engine));
+    printUpgradeLine(7, selection == 1, "TURBO", garage.turboLevel(),
+                     garage.nextCost(UpgradeKind::Turbo));
+    printUpgradeLine(8, selection == 2, "TIRES", garage.tireLevel(),
+                     garage.nextCost(UpgradeKind::Tires));
+
+    std::printf("\x1b[9;1H%c FINAL DRIVE   < %.2f >        \x1b[K",
+                selection == 3 ? '>' : ' ', garage.finalDrive());
+    for (int i = 0; i < 6; ++i) {
+        std::printf("\x1b[%d;1H%c GEAR %d        < %.2f >        \x1b[K",
+                    10 + i, selection == 4 + i ? '>' : ' ', i + 1,
+                    garage.gearRatio(std::size_t(i)));
+    }
+
+    const auto cfg = garage.makeVehicleConfig();
+    std::printf("\x1b[17;1HBuild: %.0fNm  +%.0fhp turbo      \x1b[K",
+                cfg.baseTorqueNm, cfg.turboMaxExtraHp);
+    std::printf("\x1b[18;1HGrip F/R: %.2f / %.2f            \x1b[K",
+                cfg.frontGrip, cfg.rearGrip);
+    std::printf("\x1b[20;1H%-36s\x1b[K", status ? status : "");
+    std::printf("\x1b[22;1HSTART exits                      \x1b[K");
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -484,20 +581,38 @@ int main(int argc, char** argv) {
     C3D_RenderTargetSetOutput(top, GFX_TOP, GFX_LEFT, DISPLAY_TRANSFER_FLAGS);
 
     sceneInit();
-    Vehicle car;
+    GarageState garage;
+    Vehicle car(garage.makeVehicleConfig());
     RaceSession race;
     auto traffic = makeTraffic();
+
+    GameMode mode = GameMode::Garage;
+    int garageSelection = 0;
+    const char* garageStatus = "Buy upgrades or tune gearing, then press Y.";
+    float garageSpin = 0.0f;
+
     int collisionCount = 0;
     int wallHitCount = 0;
     int rivalHitCount = 0;
     float collisionCooldown = 0.0f;
     float opponentCollisionCooldown = 0.0f;
     float wallCooldown = 0.0f;
+    bool rewardGiven = false;
 
-    std::printf("NR3DS v0.008 - first race\n");
-    std::printf("A gas | B brake | X handbrake\n");
-    std::printf("L/R shift | Circle Pad steer\n");
-    std::printf("SELECT retry | START exit\n");
+    auto resetRace = [&]() {
+        car.setConfig(garage.makeVehicleConfig());
+        race.reset();
+        traffic = makeTraffic();
+        collisionCount = 0;
+        wallHitCount = 0;
+        rivalHitCount = 0;
+        collisionCooldown = 0.0f;
+        opponentCollisionCooldown = 0.0f;
+        wallCooldown = 0.0f;
+        rewardGiven = false;
+    };
+
+    consoleClear();
 
     while (aptMainLoop()) {
         hidScanInput();
@@ -505,16 +620,85 @@ int main(int argc, char** argv) {
         const u32 held = hidKeysHeld();
         if (down & KEY_START) break;
 
+        constexpr float dt = 1.0f / 60.0f;
+
+        if (mode == GameMode::Garage) {
+            if (down & KEY_DUP) {
+                garageSelection = (garageSelection + 9) % 10;
+                garageStatus = "";
+            }
+            if (down & KEY_DDOWN) {
+                garageSelection = (garageSelection + 1) % 10;
+                garageStatus = "";
+            }
+
+            bool configChanged = false;
+            if (down & KEY_A) {
+                bool bought = false;
+                if (garageSelection == 0) bought = garage.purchase(UpgradeKind::Engine);
+                if (garageSelection == 1) bought = garage.purchase(UpgradeKind::Turbo);
+                if (garageSelection == 2) bought = garage.purchase(UpgradeKind::Tires);
+                if (garageSelection <= 2) {
+                    configChanged = bought;
+                    if (bought) garageStatus = "Upgrade installed.";
+                    else {
+                        const UpgradeKind kind = garageSelection == 0 ? UpgradeKind::Engine
+                            : (garageSelection == 1 ? UpgradeKind::Turbo : UpgradeKind::Tires);
+                        garageStatus = garage.nextCost(kind) < 0 ? "That upgrade is already MAX."
+                                                                 : "Not enough cash.";
+                    }
+                }
+            }
+
+            const float tuneDir = (down & KEY_DRIGHT) ? 1.0f : ((down & KEY_DLEFT) ? -1.0f : 0.0f);
+            if (tuneDir != 0.0f) {
+                if (garageSelection == 3) {
+                    garage.adjustFinalDrive(0.05f * tuneDir);
+                    configChanged = true;
+                    garageStatus = "Final drive adjusted.";
+                } else if (garageSelection >= 4) {
+                    garage.adjustGearRatio(std::size_t(garageSelection - 4), 0.05f * tuneDir);
+                    configChanged = true;
+                    garageStatus = "Gear ratio adjusted.";
+                }
+            }
+
+            if (configChanged) {
+                car.setConfig(garage.makeVehicleConfig());
+            }
+
+            if (down & KEY_Y) {
+                resetRace();
+                mode = GameMode::Race;
+                consoleClear();
+                continue;
+            }
+
+            garageSpin += dt;
+            Mtx_PerspTilt(&gProjection, C3D_AngleFromDegrees(58.0f),
+                          C3D_AspectRatioTop, 0.05f, 80.0f, false);
+            C3D_FrameBegin(C3D_FRAME_SYNCDRAW);
+            C3D_RenderTargetClear(top, C3D_CLEAR_ALL, 0x05070BFF, 0);
+            C3D_FrameDrawOn(top);
+            C3D_BindProgram(&gProgram);
+            C3D_FVUnifMtx4x4(GPU_VERTEX_SHADER, gLocProjection, &gProjection);
+            drawGarageScene(garage, garageSpin);
+            C3D_FrameEnd(0);
+
+            drawGarageHud(garage, garageSelection, garageStatus);
+            continue;
+        }
+
+        // Race mode.
+        if (race.telemetry().phase == RacePhase::Finished && (down & KEY_Y)) {
+            mode = GameMode::Garage;
+            garageStatus = "Race reward banked. Tune or start again.";
+            consoleClear();
+            continue;
+        }
+
         if (down & KEY_SELECT) {
-            car.reset();
-            race.reset();
-            traffic = makeTraffic();
-            collisionCount = 0;
-            wallHitCount = 0;
-            rivalHitCount = 0;
-            collisionCooldown = 0.0f;
-            opponentCollisionCooldown = 0.0f;
-            wallCooldown = 0.0f;
+            resetRace();
         }
 
         circlePosition cp{};
@@ -528,7 +712,6 @@ int main(int argc, char** argv) {
         in.shiftDown = (down & KEY_L) != 0;
         in.shiftUp = (down & KEY_R) != 0;
 
-        constexpr float dt = 1.0f / 60.0f;
         collisionCooldown = std::max(0.0f, collisionCooldown - dt);
         opponentCollisionCooldown = std::max(0.0f, opponentCollisionCooldown - dt);
         wallCooldown = std::max(0.0f, wallCooldown - dt);
@@ -558,6 +741,10 @@ int main(int argc, char** argv) {
 
         const auto& s = car.telemetry();
         const auto& rt = race.telemetry();
+        if (rt.phase == RacePhase::Finished && !rewardGiven) {
+            garage.rewardRace(rt.playerWon);
+            rewardGiven = true;
+        }
         updateProjection(s.speedKph);
 
         C3D_FrameBegin(C3D_FRAME_SYNCDRAW);
@@ -570,26 +757,34 @@ int main(int argc, char** argv) {
 
         if (rt.phase == RacePhase::Countdown) {
             const int count = std::max(1, int(std::ceil(rt.countdown)));
+            std::printf("\x1b[1;1HNR3DS v0.009 - STREET RACE    \x1b[K");
             std::printf("\x1b[5;1HRACE: GET READY  %d          \x1b[K", count);
         } else if (rt.phase == RacePhase::Racing) {
+            std::printf("\x1b[1;1HNR3DS v0.009 - STREET RACE    \x1b[K");
             std::printf("\x1b[5;1HRACE: GO  CP %d/%d             \x1b[K",
                         rt.checkpointIndex, int(RaceSession::kCheckpointCount));
         } else {
-            std::printf("\x1b[5;1HRESULT: %s  SELECT=retry      \x1b[K",
-                        rt.playerWon ? "YOU WIN" : "RIVAL WINS");
+            std::printf("\x1b[1;1HNR3DS v0.009 - STREET RACE    \x1b[K");
+            std::printf("\x1b[5;1HRESULT: %s                 \x1b[K",
+                        rt.playerWon ? "YOU WIN +$1000" : "RIVAL WINS +$300");
+            std::printf("\x1b[6;1HY=garage  SELECT=retry          \x1b[K");
         }
 
-        std::printf("\x1b[6;1HTime: %6.2f  Dist: %4.0f/%3.0fm \x1b[K",
-                    rt.elapsed, rt.playerProgressM, RaceSession::kCourseLengthM);
+        if (rt.phase != RacePhase::Finished) {
+            std::printf("\x1b[6;1HTime: %6.2f  Dist: %4.0f/%3.0fm \x1b[K",
+                        rt.elapsed, rt.playerProgressM, RaceSession::kCourseLengthM);
+        }
         std::printf("\x1b[7;1HRival gap: %+6.1fm  %5.0f km/h\x1b[K",
                     rt.gapM, rt.opponentSpeedKph);
-        std::printf("\x1b[9;1HSpeed: %6.1f km/h Gear:%d    \x1b[K", s.speedKph, s.gear);
-        std::printf("\x1b[10;1HRPM:%6.0f Turbo:%4.2f Slip:%4.2f\x1b[K",
+        std::printf("\x1b[8;1HCash: $%d  W/L: %d/%d           \x1b[K",
+                    garage.cash(), garage.wins(), garage.losses());
+        std::printf("\x1b[10;1HSpeed: %6.1f km/h Gear:%d    \x1b[K", s.speedKph, s.gear);
+        std::printf("\x1b[11;1HRPM:%6.0f Turbo:%4.2f Slip:%4.2f\x1b[K",
                     s.rpm, s.turboSpool, s.rearSlip);
-        std::printf("\x1b[11;1HSteer raw/filt: %5.2f/%5.2f \x1b[K", in.steer, s.steerFiltered);
-        std::printf("\x1b[12;1HHits traffic/rival/wall: %d/%d/%d\x1b[K",
+        std::printf("\x1b[12;1HSteer raw/filt: %5.2f/%5.2f \x1b[K", in.steer, s.steerFiltered);
+        std::printf("\x1b[13;1HHits traffic/rival/wall: %d/%d/%d\x1b[K",
                     collisionCount, rivalHitCount, wallHitCount);
-        std::printf("\x1b[14;1HCPU: %6.2f%% GPU: %6.2f%%\x1b[K",
+        std::printf("\x1b[15;1HCPU: %6.2f%% GPU: %6.2f%%\x1b[K",
                     C3D_GetProcessingTime() * 6.0f,
                     C3D_GetDrawingTime() * 6.0f);
     }

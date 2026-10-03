@@ -1,24 +1,31 @@
 # NR3DS roadmap
 
-## Current: v0.008
+## Stable baseline through v0.009
 
-- 3D Citro3D highway and chase camera
-- curved road
-- traffic and lane-change AI
-- traffic/barrier/rival collisions
-- speed-dependent precision steering
-- 3-second race countdown
-- rival race AI with mild catch-up behavior
-- checkpoint/finish gantries
-- 900 m sprint race with timer and win/loss state
+- Citro3D 3D highway renderer
+- Old 3DS-oriented native physics
+- High-speed precision steering
+- Wall sliding / traffic collision handling
+- Curved highway and traffic AI
+- Rival sprint race with checkpoints and results
+- Garage scene
+- Cash/reward loop
+- Engine, turbo and tire upgrades
+- Final-drive and per-gear tuning
 
-## Next
+## Next: v0.010
 
-- v0.009: better player/rival car silhouettes and road elevation
-- improved opponent racing line and traffic avoidance
-- race start/finish presentation polish
-- engine/audio prototype
-- larger streamed road chunk system
-- garage/tuning screen and car setup data
-- progression/save system
-- replace placeholder handling curves with extracted serialized values where appropriate
+- Persistent save file for cash, upgrades, tuning and win/loss record
+- Better garage presentation and tuning feedback
+- Multiple opponents / race difficulty choices
+- Basic race-entry stakes or payouts
+
+## Later milestones
+
+- Better low-poly car meshes and textures
+- Larger streamed road network
+- More race types and opponent personalities
+- NIGHT-RUNNERS-style progression structure
+- Audio / engine note / turbo / tire sounds
+- More faithful recovered handling curves
+- Performance validation on a physical Old 3DS

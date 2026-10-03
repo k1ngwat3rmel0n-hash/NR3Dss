@@ -1,5 +1,6 @@
 #include "nr_physics.hpp"
 #include "nr_race.hpp"
+#include "nr_garage.hpp"
 
 #include <cassert>
 #include <cmath>
@@ -65,6 +66,36 @@ int main() {
         assert(race.telemetry().playerWon);
     }
 
-    std::puts("All NR3DS core/race tests passed.");
+
+    {
+        GarageState garage;
+        assert(garage.cash() == 1100);
+        const auto base = garage.makeVehicleConfig();
+        assert(std::fabs(base.baseTorqueNm - 320.0f) < 0.01f);
+        assert(std::fabs(base.finalDrive - 4.10f) < 0.01f);
+
+        assert(garage.purchase(UpgradeKind::Engine));
+        assert(garage.engineLevel() == 1);
+        assert(garage.cash() == 400);
+        const auto upgraded = garage.makeVehicleConfig();
+        assert(upgraded.baseTorqueNm > base.baseTorqueNm);
+        assert(!garage.purchase(UpgradeKind::Turbo)); // not enough cash yet
+
+        garage.rewardRace(true);
+        assert(garage.cash() == 1400);
+        assert(garage.wins() == 1);
+        assert(garage.purchase(UpgradeKind::Turbo));
+        assert(garage.turboLevel() == 1);
+
+        const float oldFinal = garage.finalDrive();
+        garage.adjustFinalDrive(0.10f);
+        assert(garage.finalDrive() > oldFinal);
+
+        const float oldFirst = garage.gearRatio(0);
+        garage.adjustGearRatio(0, 0.05f);
+        assert(garage.gearRatio(0) >= oldFirst);
+    }
+
+    std::puts("All NR3DS core/race/garage tests passed.");
     return 0;
 }

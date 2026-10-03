@@ -1,15 +1,15 @@
-# Reverse-engineering / implementation notes — v0.008
+# Reverse-engineering / fidelity notes - v0.009
 
-The portable vehicle core continues to preserve the recovered structure used in prior builds: engine torque shaping, turbo spool, engine heat/health effects, tire temperature, handbrake grip redistribution, drift response, and high-speed steering filtering.
+The portable vehicle core continues to preserve selected behavior reconstructed from the supplied IL2CPP NIGHT-RUNNERS build: engine torque flow, turbo-spool trends, engine heat/health effects, tire-temperature/grip behavior, handbrake grip transition and speed-sensitive steering behavior.
 
-v0.008 adds an original lightweight race layer rather than attempting to reproduce Unity race objects directly. The new `RaceSession` is intentionally platform-independent and cheap enough for Old 3DS:
+v0.009 adds a clean-room native garage/progression layer. The original build exposes garage/customization and engine/turbo/tire/gear-related systems, which supports using those categories, but the current prices, reward amounts, menu flow and level values are NR3DS-specific balancing rather than claims about exact original game data.
 
-- fixed 3-second countdown
-- 900 m sprint distance
-- checkpoint progression at 225/450/675 m
-- one scalar opponent speed state
-- modest gap-based catch-up adjustment
-- smoothed deterministic rival lane changes
-- first-finisher win/loss state
+Current upgrade effects:
 
-This is a gameplay scaffold. It can later be tuned against the recovered `raceSpot::race_AICatchup`, `setup_Race`, countdown and finish behavior once more original constants/serialized values are mapped.
+- Engine: +30 Nm base torque per level, plus strength/cooling headroom.
+- Turbo: +25 hp maximum forced-induction contribution per level.
+- Tires: +0.045 front/rear grip scalar per level.
+- Final drive: user adjustable 3.20-5.00.
+- Gear ratios: individually adjustable while maintaining descending ratio order.
+
+The exact serialized Unity AnimationCurve keyframes are still not imported, so the portable torque/turbo/tire curves remain approximations.
