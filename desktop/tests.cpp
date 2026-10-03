@@ -60,7 +60,7 @@ int main() {
         constexpr float dt = 1.0f / 60.0f;
         // Clear the countdown, then verify a fast player can complete the race.
         for (int i = 0; i < 181; ++i) race.update(0.0f, dt);
-        for (int i = 0; i < 60 * 45 && race.telemetry().phase != RacePhase::Finished; ++i) {
+        for (int i = 0; i < 60 * 120 && race.telemetry().phase != RacePhase::Finished; ++i) {
             race.update(220.0f, dt);
         }
         assert(race.telemetry().phase == RacePhase::Finished);
@@ -101,10 +101,13 @@ int main() {
 
     {
         ExpresswayRoute route;
-        assert(route.totalLengthM() > 2000.0f);
+        assert(route.totalLengthM() > 6900.0f);
         assert(route.styleAt(40.0f) == RoadStyle::HighLevel);
         assert(route.styleAt(1480.0f) == RoadStyle::Junction);
         assert(route.styleAt(1600.0f) == RoadStyle::Tunnel);
+        assert(route.styleAt(2200.0f) == RoadStyle::Underpass);
+        assert(route.styleAt(3800.0f) == RoadStyle::Junction);
+        assert(route.styleAt(5000.0f) == RoadStyle::HighLevel);
         assert(route.activeChunkFirst(400.0f) <= route.chunkIndex(400.0f));
         assert(route.activeChunkLast(400.0f) >= route.chunkIndex(650.0f));
         const float c0 = route.centerAt(0.0f);

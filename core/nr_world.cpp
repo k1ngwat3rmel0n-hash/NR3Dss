@@ -20,20 +20,24 @@ inline float wrapPi(float a) {
 }
 
 ExpresswayRoute::ExpresswayRoute() {
-    // v0.012 is the first route whose CENTERLINE comes from the supplied
-    // NIGHT-RUNNERS Unity data rather than hand-authored curves.
-    //
-    // Source chain used for this first converted branch:
-    //   WP_AREA_2,1_HIGH_0 -> WP_AREA_2,1_R_0 (partial) -> WP_AREA_2,1_TUNNEL_0
-    //
-    // The surrounding visual dressing is still a lightweight NR3DS recreation;
-    // the road path and elevation are recovered source data.
-    constexpr float highEnd = 1445.858f;
-    constexpr float connectorEnd = 1532.124f;
+    // v0.015 extends the recovered C1 route from ~2.09 km to ~6.97 km.
+    // Every centerline section below comes from ordered waypoint chains recovered
+    // from level1/C1_TATSUMI.unity. Short gaps between additive scene routes are
+    // linearly bridged offline; no hand-authored sine-wave road remains.
     sections_ = {{
-        {0.0f, highEnd, RoadStyle::HighLevel, 10.75f, 3, "AREA_2,1_HIGH"},
-        {highEnd, connectorEnd - highEnd, RoadStyle::Junction, 10.55f, 3, "AREA_2,1_R"},
-        {connectorEnd, kRecoveredRouteLengthM - connectorEnd, RoadStyle::Tunnel, 10.45f, 3, "AREA_2,1_TUNNEL"},
+        {0.000f,    1445.858f, RoadStyle::HighLevel, 10.75f, 3, "AREA_2,1_HIGH"},
+        {1445.858f,   99.485f, RoadStyle::Junction,  10.55f, 3, "AREA_2,1_R"},
+        {1545.343f,  548.542f, RoadStyle::Tunnel,    10.45f, 3, "AREA_2,1_TUNNEL"},
+        {2093.885f,  341.900f, RoadStyle::Underpass, 10.45f, 3, "AREA_2,1_MAIN_L"},
+        {2435.785f,  404.206f, RoadStyle::Junction,  10.55f, 3, "RIGHT_MAIN_1A"},
+        {2839.991f,   74.977f, RoadStyle::Junction,  10.55f, 3, "RIGHT_MAIN_1B"},
+        {2914.968f,  699.204f, RoadStyle::Underpass, 10.45f, 3, "LEFT_MAIN_0"},
+        {3614.172f,  410.088f, RoadStyle::Junction,  10.55f, 3, "RIGHT_MAIN_0"},
+        {4024.260f,  588.411f, RoadStyle::HighLevel, 10.75f, 3, "RIGHT_HIGH_JOIN"},
+        {4612.671f,  164.551f, RoadStyle::HighLevel, 10.75f, 3, "RIGHT_HIGH_MAIN"},
+        {4777.222f,  809.337f, RoadStyle::HighLevel, 10.75f, 3, "AREA_0,8_HIGH"},
+        {5586.559f, 1059.119f, RoadStyle::HighLevel, 10.75f, 3, "AREA_0_UPPER_R"},
+        {6645.678f,  327.031f, RoadStyle::Open,      10.75f, 3, "AREA_0,1_MAIN_R"},
     }};
 }
 

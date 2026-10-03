@@ -67,7 +67,7 @@ void RaceSession::update(float playerSpeedKph, float dt) {
 
     // Rival lane plan changes at coarse course segments. The movement itself is
     // smoothed so it reads as an intentional lane change instead of a teleport.
-    const int stage = std::min(4, int(t_.opponentProgressM / 410.0f));
+    const int stage = std::min(4, int(t_.opponentProgressM / (kCourseLengthM / 5.0f)));
     if (stage != laneStage_) {
         static constexpr float kLaneTargets[5] = {2.8f, 0.0f, -2.8f, 0.0f, 2.8f};
         opponentTargetLaneX_ = kLaneTargets[stage];

@@ -1,0 +1,124 @@
+{
+  "total_length_m": 6972.709245356717,
+  "sample_step_m": 8.0,
+  "sample_count": 873,
+  "sections": [
+    {
+      "label": "AREA_2,1_HIGH",
+      "source": "WP_AREA_2,1_HIGH_0",
+      "style": "HighLevel",
+      "start_m": 0.0,
+      "end_m": 1445.858023349737,
+      "length_m": 1445.858023349737,
+      "entry_gap_m": 0.0
+    },
+    {
+      "label": "AREA_2,1_R",
+      "source": "WP_AREA_2,1_R_0 partial",
+      "style": "Junction",
+      "start_m": 1445.858023349737,
+      "end_m": 1545.3088027275983,
+      "length_m": 99.45077937786118,
+      "entry_gap_m": 13.184844550206586
+    },
+    {
+      "label": "AREA_2,1_TUNNEL",
+      "source": "WP_AREA_2,1_TUNNEL_0",
+      "style": "Tunnel",
+      "start_m": 1545.3088027275983,
+      "end_m": 2093.88474472251,
+      "length_m": 548.5759419949115,
+      "entry_gap_m": 6.482823065707914
+    },
+    {
+      "label": "AREA_2,1_MAIN_L",
+      "source": "WP_AREA_2,1_1_MAIN_L_1",
+      "style": "Underpass",
+      "start_m": 2093.88474472251,
+      "end_m": 2435.759292371928,
+      "length_m": 341.8745476494182,
+      "entry_gap_m": 98.13183428267796
+    },
+    {
+      "label": "RIGHT_MAIN_1A",
+      "source": "WP_RIGHT_MAIN_1.0",
+      "style": "Junction",
+      "start_m": 2435.759292371928,
+      "end_m": 2839.9717359280617,
+      "length_m": 404.2124435561336,
+      "entry_gap_m": 143.9929067012103
+    },
+    {
+      "label": "RIGHT_MAIN_1B",
+      "source": "WP_RIGHT_MAIN_1.1",
+      "style": "Junction",
+      "start_m": 2839.9717359280617,
+      "end_m": 2914.9729560449837,
+      "length_m": 75.00122011692201,
+      "entry_gap_m": 16.217771170322916
+    },
+    {
+      "label": "LEFT_MAIN_0",
+      "source": "WP_LEFT_MAIN_0 [branch 1 reverse]",
+      "style": "Underpass",
+      "start_m": 2914.9729560449837,
+      "end_m": 3614.2032365906775,
+      "length_m": 699.2302805456939,
+      "entry_gap_m": 24.501310248239633
+    },
+    {
+      "label": "RIGHT_MAIN_0",
+      "source": "WP_RIGHT_MAIN_0 [branch 7]",
+      "style": "Junction",
+      "start_m": 3614.2032365906775,
+      "end_m": 4024.2645591506866,
+      "length_m": 410.0613225600091,
+      "entry_gap_m": 79.48682281844548
+    },
+    {
+      "label": "RIGHT_HIGH_JOIN",
+      "source": "WP_RIGHT_HIGHER_MAIN_0_JOIN",
+      "style": "HighLevel",
+      "start_m": 4024.2645591506866,
+      "end_m": 4612.650466572965,
+      "length_m": 588.3859074222787,
+      "entry_gap_m": 30.344488824773897
+    },
+    {
+      "label": "RIGHT_HIGH_MAIN",
+      "source": "WP_RIGHT_HIGHER_MAIN_0.1",
+      "style": "HighLevel",
+      "start_m": 4612.650466572965,
+      "end_m": 4777.243861832575,
+      "length_m": 164.59339525960968,
+      "entry_gap_m": 62.15424871468976
+    },
+    {
+      "label": "AREA_0,8_HIGH",
+      "source": "WP_AREA_0,8_HIGH_0 (1)",
+      "style": "HighLevel",
+      "start_m": 4777.243861832575,
+      "end_m": 5586.554197552704,
+      "length_m": 809.3103357201289,
+      "entry_gap_m": 17.281757961165685
+    },
+    {
+      "label": "AREA_0_UPPER_R",
+      "source": "WP_AREA_0_UPPER_R_0",
+      "style": "HighLevel",
+      "start_m": 5586.554197552704,
+      "end_m": 6645.6688564654105,
+      "length_m": 1059.1146589127065,
+      "entry_gap_m": 12.45403817051611
+    },
+    {
+      "label": "AREA_0,1_MAIN_R",
+      "source": "WP_AREA_0,1_MAIN_R_4",
+      "style": "Open",
+      "start_m": 6645.6688564654105,
+      "end_m": 6972.709245356717,
+      "length_m": 327.04038889130607,
+      "entry_gap_m": 22.08889863074023
+    }
+  ]
+}

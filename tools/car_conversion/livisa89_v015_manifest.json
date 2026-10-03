@@ -1,0 +1,105 @@
+{
+  "source_bundle": "customization_sannislivisa89_assets_all_fdaa06fe4713683dc4df2eca13d13e4b.bundle",
+  "authorization_note": "User states they have developer permission to use NIGHT-RUNNERS assets.",
+  "lod": "v0.015 road/showroom welded body shell",
+  "welded_vertices": 3176,
+  "triangles": 6368,
+  "expanded_draw_vertices": 19104,
+  "parts": [
+    {
+      "mesh_name": "Door 0 Left.002",
+      "source_vertices": 654,
+      "source_triangles": 908
+    },
+    {
+      "mesh_name": "Door 0 Right.002",
+      "source_vertices": 649,
+      "source_triangles": 908
+    },
+    {
+      "mesh_name": "Livisa 200rs Stock .003",
+      "source_vertices": 2771,
+      "source_triangles": 3850
+    },
+    {
+      "mesh_name": "Livisa 200rs Stock4.001",
+      "source_vertices": 1018,
+      "source_triangles": 1532
+    },
+    {
+      "mesh_name": "Livisa Stock3",
+      "source_vertices": 516,
+      "source_triangles": 808
+    },
+    {
+      "mesh_name": "Livisa 180rs Stock2.002",
+      "source_vertices": 686,
+      "source_triangles": 922
+    },
+    {
+      "mesh_name": "Livisa 200rs Stock11.001",
+      "source_vertices": 1684,
+      "source_triangles": 2334
+    },
+    {
+      "mesh_name": "body.005",
+      "source_vertices": 1669,
+      "source_triangles": 2078
+    },
+    {
+      "mesh_name": "body.027",
+      "source_vertices": 365,
+      "source_triangles": 305
+    },
+    {
+      "mesh_name": "brake.009",
+      "source_vertices": 272,
+      "source_triangles": 270
+    },
+    {
+      "mesh_name": "indi right.009",
+      "source_vertices": 120,
+      "source_triangles": 122
+    },
+    {
+      "mesh_name": "rev.026",
+      "source_vertices": 94,
+      "source_triangles": 100
+    },
+    {
+      "mesh_name": "run.014",
+      "source_vertices": 120,
+      "source_triangles": 114
+    },
+    {
+      "mesh_name": "Livisa Hatch Stock",
+      "source_vertices": 2529,
+      "source_triangles": 3724
+    },
+    {
+      "mesh_name": "Livisa 200rs Stock1",
+      "source_vertices": 398,
+      "source_triangles": 598
+    },
+    {
+      "mesh_name": "Livisa 200rs Stock02 L",
+      "source_vertices": 799,
+      "source_triangles": 927
+    },
+    {
+      "mesh_name": "Livisa 200rs Stock02 R",
+      "source_vertices": 799,
+      "source_triangles": 927
+    },
+    {
+      "mesh_name": "_Livisa Stock",
+      "source_vertices": 585,
+      "source_triangles": 570
+    }
+  ],
+  "notes": [
+    "Source x=width, source z=height, source y=length; converted to NR3DS x/y/z.",
+    "Wheels, glass and light accents remain separate procedural overlays in v0.015.",
+    "Source material/UV preservation is not implemented yet."
+  ]
+}

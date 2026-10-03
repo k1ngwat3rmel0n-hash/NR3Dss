@@ -1,41 +1,77 @@
-# NR3DS v0.014
+# NR3DS v0.015
 
-Stable-source-stream milestone for the Old 3DS NIGHT-RUNNERS-style demake/reimplementation.
+Long recovered-C1 route, first real source-car pass, and first 3DS audio-output milestone.
 
 ## What is new
 
-- Fixes the visible scenery "reset" / apparent car-lag artifact reported in v0.013.
-- Roadside objects now use stable absolute segment IDs instead of re-phasing every time the player crosses a 10 m boundary.
-- Lane dashes, lights, fences, supports, tunnel ribs, buildings and junction props therefore stay attached to the same world positions while the player moves through them.
-- Adds a far-horizon fade so newly active geometry appears inside the fog instead of popping in as a block.
-- Keeps a stable deep-night clear/background color while road-section lighting changes locally, avoiding full-screen flashes/pops at zone boundaries.
-- Integrates the first actual developer-authorized NIGHT-RUNNERS LOD mesh data into the native Citro3D renderer:
-  - `AREA_2 double single template.013` from `sharedassets11.assets` as a lightweight road-detail layer.
-  - `_TUNNEL_OG_2x2_LANE_HIGH_ROOF.520` from `sharedassets11.assets` as a tunnel-roof detail layer.
-- The source meshes are converted offline into compact position-only triangle arrays; Unity runtime/material data is not required on the 3DS.
-- Keeps the recovered ~2.09 km C1 centerline/elevation, traffic, rival, steering, collision, garage and upgrade systems intact.
+### ~6.97 km recovered C1 route
 
-## Why v0.013 looked like it was lagging
+The source-derived route has been expanded from about 2.09 km to about 6.97 km using
+ordered waypoint chains recovered from `level1 / C1_TATSUMI.unity`.
 
-v0.013 rebuilt its procedural scenery pattern from loop index zero whenever the player's 10 m road bucket changed. The route itself moved continuously, but repeated details such as lamps, lane dashes, fence modules and tunnel ribs changed phase on the same frame. At speed this looked like the environment snapped backward/forward around the fixed chase-camera car.
+The current connected chain is:
 
-v0.014 gives every 10 m module a permanent absolute segment number, so decorative cadence is deterministic in world space.
+- `WP_AREA_2,1_HIGH_0`
+- partial `WP_AREA_2,1_R_0`
+- `WP_AREA_2,1_TUNNEL_0`
+- `WP_AREA_2,1_1_MAIN_L_1`
+- `WP_RIGHT_MAIN_1.0`
+- `WP_RIGHT_MAIN_1.1`
+- the connected `WP_LEFT_MAIN_0` branch (reversed)
+- the connected `WP_RIGHT_MAIN_0` branch
+- `WP_RIGHT_HIGHER_MAIN_0_JOIN`
+- `WP_RIGHT_HIGHER_MAIN_0.1`
+- `WP_AREA_0,8_HIGH_0 (1)`
+- `WP_AREA_0_UPPER_R_0`
+- `WP_AREA_0,1_MAIN_R_4`
 
-## Source-geometry status
+Short gaps between additive-scene waypoint chains are bridged linearly offline. The road
+centerline itself no longer uses hand-authored sine curves.
 
-This is the first build to draw original LOD vertex geometry in Citro3D, but it is not yet a full direct rendering of each Unity scene mesh at its original world transform. The original LOD meshes are normalized into road-local modules and layered over the recovered route. Exact section-by-section source placement is the next conversion step.
+The sprint race is now 6.4 km with checkpoints at 1.6 / 3.2 / 4.8 km.
+
+### First real source player car
+
+The cuboid body has been replaced by a road-LOD conversion made from the developer-authorized
+Sannis Livisa '89 customization bundle. The first pass combines representative stock body
+panels into a welded ~6,368-triangle shell (~19,104 expanded draw vertices).
+
+The same source body is used in the showroom and on the expressway. Wheels, glass and light
+accents remain intentionally cheap procedural pieces for now so they can later become separate
+customization slots.
+
+### Audio pipeline online
+
+The supplied music UnityFS bundle was parsed into 30 streamed `AudioClip` entries. Exact names,
+durations, source sample rates and FSB5 offsets/sizes are stored in:
+
+`tools/music_import/source_music_manifest.json`
+
+The source songs are FSB5/Vorbis and are **not embedded in this build yet**. v0.015 instead
+runs a tiny original four-second PCM synth loop through the 3DS NDSP API to validate real
+hardware/emulator audio output without blocking the map/car work on FSB5 transcoding.
+
+### Kept from v0.014.1
+
+- continuous world movement after a race result
+- stable absolute segment IDs (no 10 m scenery re-phasing)
+- source road/tunnel LOD test geometry
+- high-speed steering precision
+- wall sliding and traffic collisions
+- traffic/rival race systems
+- garage/upgrades/gearing
 
 ## Controls
 
-### Garage
-- D-pad Up/Down: select item
-- A: buy selected upgrade
-- D-pad Left/Right: adjust gearing
-- Circle Pad: rotate display car
-- Y: start expressway race
+Garage:
+- D-pad Up/Down: select
+- A: buy upgrade
+- D-pad Left/Right: gear/final-drive tune
+- Circle Pad Left/Right: rotate car display
+- Y: enter expressway
 - START: exit
 
-### Race
+Expressway:
 - Circle Pad: steer
 - A: throttle
 - B: brake
@@ -45,16 +81,12 @@ This is the first build to draw original LOD vertex geometry in Citro3D, but it 
 - Y after finish: garage
 - START: exit
 
-## Build
+## Expected build
 
-Use the included GitHub Actions workflow or run `make` in `3ds/` with devkitPro `3ds-dev` installed.
+`nr3ds_v015.3dsx`
 
-Expected output:
+## Performance note
 
-```text
-nr3ds_v014.3dsx
-```
-
-## Validation
-
-The portable desktop physics/race/garage/world/source-profile test suite passes. The generated source-mesh header also compiles independently with a standard C++17 compiler. GitHub Actions remains the final devkitARM/Citro3D compile check.
+Azahar processing percentages are useful for spotting regressions but are not a substitute for
+performance testing on a physical Old 3DS. The Livisa shell is deliberately a first LOD pass;
+further mesh/material work will be budgeted against real-hardware measurements.

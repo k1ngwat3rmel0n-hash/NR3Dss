@@ -13,6 +13,7 @@
 #include "nr_world.hpp"
 #include "nr_source_geometry.hpp"
 #include "source_meshes.hpp"
+#include "source_car.hpp"
 
 using nr3ds::InputState;
 using nr3ds::Vehicle;
@@ -74,7 +75,105 @@ C3D_Mtx gProjection{};
 void* gVbo = nullptr;
 void* gSourceRoadVbo = nullptr;
 void* gSourceTunnelRoofVbo = nullptr;
+void* gLivisaCarVbo = nullptr;
 nr3ds::ExpresswayRoute gRoute;
+
+
+// v0.015 audio plumbing. The supplied source soundtrack is stored as FSB5 and
+// is catalogued under tools/music_import. Until offline FSB5 transcoding lands,
+// run a tiny original PCM synth loop through NDSP to validate real 3DS audio.
+constexpr int kAudioRate = 22050;
+constexpr int kAudioLoopSeconds = 4;
+constexpr int kAudioSamples = kAudioRate * kAudioLoopSeconds;
+s16* gAudioBuffer = nullptr;
+ndspWaveBuf gAudioWave{};
+bool gAudioReady = false;
+
+
+void audioTestInit() {
+    const Result rc = ndspInit();
+    if (R_FAILED(rc)) return;
+
+    ndspSetOutputMode(NDSP_OUTPUT_STEREO);
+    ndspChnReset(0);
+    ndspChnSetInterp(0, NDSP_INTERP_LINEAR);
+    ndspChnSetRate(0, float(kAudioRate));
+    ndspChnSetFormat(0, NDSP_FORMAT_MONO_PCM16);
+    float mix[12]{};
+    mix[0] = 0.23f;
+    mix[1] = 0.23f;
+    ndspChnSetMix(0, mix);
+
+    gAudioBuffer = static_cast<s16*>(linearAlloc(kAudioSamples * sizeof(s16)));
+    if (!gAudioBuffer) {
+        ndspExit();
+        return;
+    }
+
+    // Original four-second late-night synth test: kick/snare/hat + bass/arpeggio.
+    // It exists only to prove the NDSP playback path and is not one of the supplied songs.
+    constexpr float pi = 3.14159265358979323846f;
+    u32 noise = 0x12345678u;
+    for (int i = 0; i < kAudioSamples; ++i) {
+        const float t = float(i) / float(kAudioRate);
+        const float beat = std::fmod(t * (160.0f / 60.0f), 4.0f);
+        const float beatFrac = beat - std::floor(beat);
+        const int beatIndex = int(std::floor(beat));
+
+        float v = 0.0f;
+        // Side-chain-like bass pulse.
+        const float bassEnv = std::exp(-beatFrac * 4.0f);
+        const float bassHz = (beatIndex == 2) ? 65.41f : 55.0f;
+        v += std::sin(2.0f * pi * bassHz * t) * 0.22f * bassEnv;
+
+        // Kick on beats 0/2.
+        if ((beatIndex & 1) == 0 && beatFrac < 0.20f) {
+            const float env = std::exp(-beatFrac * 28.0f);
+            const float hz = 72.0f - beatFrac * 170.0f;
+            v += std::sin(2.0f * pi * hz * t) * 0.34f * env;
+        }
+
+        // Snare on beats 1/3, deterministic LFSR noise.
+        noise ^= noise << 13; noise ^= noise >> 17; noise ^= noise << 5;
+        const float n = (float(noise & 0xFFFFu) / 32767.5f) - 1.0f;
+        if ((beatIndex & 1) == 1 && beatFrac < 0.16f)
+            v += n * 0.16f * std::exp(-beatFrac * 22.0f);
+
+        // Eighth-note hats.
+        const float eighth = std::fmod(t * (160.0f / 60.0f) * 2.0f, 1.0f);
+        if (eighth < 0.055f)
+            v += n * 0.045f * std::exp(-eighth * 45.0f);
+
+        // Small high arpeggio to make the audio test obviously musical.
+        const int step = int(std::floor(t * 8.0f)) & 7;
+        static constexpr float notes[8] = {220.0f, 261.63f, 329.63f, 392.0f,
+                                           329.63f, 261.63f, 246.94f, 293.66f};
+        v += std::sin(2.0f * pi * notes[step] * t) * 0.035f;
+
+        v = v < -0.95f ? -0.95f : (v > 0.95f ? 0.95f : v);
+        gAudioBuffer[i] = s16(v * 32767.0f);
+    }
+
+    std::memset(&gAudioWave, 0, sizeof(gAudioWave));
+    gAudioWave.data_pcm16 = gAudioBuffer;
+    gAudioWave.nsamples = kAudioSamples;
+    gAudioWave.looping = true;
+    DSP_FlushDataCache(gAudioBuffer, kAudioSamples * sizeof(s16));
+    ndspChnWaveBufAdd(0, &gAudioWave);
+    gAudioReady = true;
+}
+
+void audioTestExit() {
+    if (gAudioReady) {
+        ndspChnWaveBufClear(0);
+        ndspExit();
+        gAudioReady = false;
+    }
+    if (gAudioBuffer) {
+        linearFree(gAudioBuffer);
+        gAudioBuffer = nullptr;
+    }
+}
 
 float clampf(float v, float lo, float hi) {
     return v < lo ? lo : (v > hi ? hi : v);
@@ -181,6 +280,9 @@ void sceneInit() {
     gSourceTunnelRoofVbo = linearAlloc(sizeof(kSourceTunnelRoofVerts));
     if (gSourceTunnelRoofVbo)
         std::memcpy(gSourceTunnelRoofVbo, kSourceTunnelRoofVerts, sizeof(kSourceTunnelRoofVerts));
+    gLivisaCarVbo = linearAlloc(sizeof(kLivisaStockVerts));
+    if (gLivisaCarVbo)
+        std::memcpy(gLivisaCarVbo, kLivisaStockVerts, sizeof(kLivisaStockVerts));
 
     bindPositionVbo(gVbo, sizeof(Vertex));
 
@@ -195,6 +297,7 @@ void sceneInit() {
 }
 
 void sceneExit() {
+    if (gLivisaCarVbo) linearFree(gLivisaCarVbo);
     if (gSourceTunnelRoofVbo) linearFree(gSourceTunnelRoofVbo);
     if (gSourceRoadVbo) linearFree(gSourceRoadVbo);
     if (gVbo) linearFree(gVbo);
@@ -362,6 +465,7 @@ void drawTrafficCar(const TrafficCar& t, float cameraX, float playerWorldM) {
 
 void drawRaceOpponent(const nr3ds::RaceTelemetry& race,
                       float cameraX, float playerWorldM) {
+    if (race.phase == RacePhase::Finished) return;
     const float relM = race.opponentProgressM - race.playerProgressM;
     if (relM < -4.5f || relM > 195.0f) return;
 
@@ -869,35 +973,37 @@ void drawHighway(const nr3ds::Telemetry& s,
     drawCube(carX, -1.15f, -10.5f, 4.3f, 0.016f, 9.0f, 0.0f,
              headlight, headlight * 0.92f, headlight * 0.56f);
 
-    // Lower/closer chase framing and a slightly fuller low-poly player car.
+    // First real source-car pass. The body shell is developer-authorized Livisa
+    // geometry converted offline from the customization bundle to a ~6.3k-triangle
+    // road LOD. Wheels/glass/lights stay cheap procedural pieces for now.
     const float carYaw = clampf(-s.driftAngleDeg * 0.012f, -0.42f, 0.42f);
     const float carZ = -4.35f;
-    drawCube(carX, -0.60f, carZ, 1.64f, 0.43f, 3.38f, carYaw,
-             0.78f, 0.035f, 0.025f);
-    drawCube(carX, -0.30f, carZ - 0.50f, 1.46f, 0.20f, 1.28f, carYaw,
-             0.73f, 0.030f, 0.022f);
-    drawCube(carX, -0.18f, carZ - 0.28f, 1.20f, 0.36f, 1.35f, carYaw,
-             0.045f, 0.075f, 0.10f);
-    drawCube(carX, -0.38f, carZ + 1.42f, 1.58f, 0.18f, 0.30f, carYaw,
-             0.58f, 0.025f, 0.020f);
+    if (gLivisaCarVbo) {
+        drawSourceTriangles(gLivisaCarVbo, kLivisaStockVertsCount,
+                            carX, -0.96f, carZ,
+                            1.0f, 1.0f, 1.0f, carYaw,
+                            0.78f, 0.030f, 0.022f);
+    }
+    // Dark glass volume restores material separation until texture/UV support lands.
+    drawCube(carX, -0.28f, carZ - 0.10f, 1.18f, 0.30f, 1.18f, carYaw,
+             0.035f, 0.060f, 0.080f);
 
-    // Wheels.
     for (int side = -1; side <= 1; side += 2) {
-        drawCube(carX + float(side) * 0.86f, -0.77f, carZ + 1.02f,
-                 0.21f, 0.34f, 0.50f, carYaw,
-                 0.014f, 0.014f, 0.017f);
-        drawCube(carX + float(side) * 0.86f, -0.77f, carZ - 1.02f,
-                 0.21f, 0.34f, 0.50f, carYaw,
-                 0.014f, 0.014f, 0.017f);
+        drawCube(carX + float(side) * 0.86f, -0.79f, carZ + 1.08f,
+                 0.20f, 0.38f, 0.53f, carYaw,
+                 0.012f, 0.012f, 0.015f);
+        drawCube(carX + float(side) * 0.86f, -0.79f, carZ - 1.12f,
+                 0.20f, 0.38f, 0.53f, carYaw,
+                 0.012f, 0.012f, 0.015f);
     }
 
     const float brakeGlow = braking ? 1.0f : 0.66f;
-    drawCube(carX - 0.48f, -0.46f, carZ + 1.72f,
-             0.25f, 0.12f, 0.07f, carYaw,
-             brakeGlow, 0.022f, 0.008f);
-    drawCube(carX + 0.48f, -0.46f, carZ + 1.72f,
-             0.25f, 0.12f, 0.07f, carYaw,
-             brakeGlow, 0.022f, 0.008f);
+    drawCube(carX - 0.49f, -0.51f, carZ + 1.91f,
+             0.28f, 0.10f, 0.055f, carYaw,
+             brakeGlow, 0.018f, 0.006f);
+    drawCube(carX + 0.49f, -0.51f, carZ + 1.91f,
+             0.28f, 0.10f, 0.055f, carYaw,
+             brakeGlow, 0.018f, 0.006f);
 }
 
 
@@ -915,84 +1021,48 @@ void drawGaragePart(float baseX, float baseY, float baseZ,
 
 void drawShowroomCar(const GarageState& garage, float spin) {
     const float baseX = 0.15f;
-    const float baseY = -0.62f;
     const float baseZ = -7.65f;
-    const float yaw = 0.34f + std::sin(spin * 0.70f) * 0.18f;
-
+    // Source mesh faces -Z; the showroom camera views it from +Z, so rotate 180°.
+    const float yaw = 3.14159265f + 0.34f + std::sin(spin * 0.70f) * 0.18f;
     const float tireAccent = 0.22f + 0.10f * float(garage.tireLevel());
     const float turboAccent = 0.22f + 0.10f * float(garage.turboLevel());
     const float engineAccent = 0.72f + 0.055f * float(garage.engineLevel());
 
-    // Low-poly 1980s/1990s Japanese-coupe-inspired silhouette. Everything is
-    // still generated from cuboids so this remains tiny and Old-3DS friendly.
-    drawGaragePart(baseX, baseY, baseZ, 0.0f, 0.05f, 0.0f,
-                   1.72f, 0.34f, 3.48f, yaw,
-                   engineAccent, 0.050f, 0.035f);
-    drawGaragePart(baseX, baseY, baseZ, 0.0f, -0.13f, 0.10f,
-                   1.80f, 0.17f, 3.65f, yaw,
-                   0.42f, 0.030f, 0.026f);
-    drawGaragePart(baseX, baseY, baseZ, 0.0f, 0.23f, 0.92f,
-                   1.55f, 0.16f, 1.05f, yaw,
-                   engineAccent * 0.96f, 0.045f, 0.032f);
-    drawGaragePart(baseX, baseY, baseZ, 0.0f, 0.46f, -0.22f,
-                   1.24f, 0.49f, 1.42f, yaw,
-                   0.075f, 0.105f, 0.125f);
-    drawGaragePart(baseX, baseY, baseZ, 0.0f, 0.69f, -0.24f,
-                   1.02f, 0.10f, 1.08f, yaw,
-                   0.34f, 0.040f, 0.035f);
-    drawGaragePart(baseX, baseY, baseZ, 0.0f, 0.17f, -1.44f,
-                   1.55f, 0.18f, 0.52f, yaw,
-                   engineAccent * 0.92f, 0.042f, 0.030f);
+    if (gLivisaCarVbo) {
+        drawSourceTriangles(gLivisaCarVbo, kLivisaStockVertsCount,
+                            baseX, -1.00f, baseZ,
+                            1.0f, 1.0f, 1.0f, yaw,
+                            engineAccent, 0.045f, 0.030f);
+    }
 
-    // Bumpers / skirts.
-    drawGaragePart(baseX, baseY, baseZ, 0.0f, -0.05f, 1.78f,
-                   1.76f, 0.20f, 0.20f, yaw,
-                   0.30f, 0.025f, 0.023f);
-    drawGaragePart(baseX, baseY, baseZ, 0.0f, -0.04f, -1.78f,
-                   1.72f, 0.18f, 0.18f, yaw,
-                   0.30f, 0.025f, 0.023f);
-    drawGaragePart(baseX, baseY, baseZ, -0.91f, -0.06f, 0.0f,
-                   0.11f, 0.16f, 2.80f, yaw,
-                   0.20f, 0.020f, 0.020f);
-    drawGaragePart(baseX, baseY, baseZ,  0.91f, -0.06f, 0.0f,
-                   0.11f, 0.16f, 2.80f, yaw,
-                   0.20f, 0.020f, 0.020f);
-
-    // Wheels and hubs.
-    const float wheelZ[2] = {1.12f, -1.10f};
+    // Cheap glass/material separation and wheels remain independent so future
+    // customization slots can replace them without rebuilding the body VBO.
+    drawGaragePart(baseX, -1.00f, baseZ, 0.0f, 0.67f, -0.08f,
+                   1.16f, 0.30f, 1.25f, yaw,
+                   0.045f, 0.070f, 0.085f);
+    const float wheelZ[2] = {-1.12f, 1.08f};
     for (int axle = 0; axle < 2; ++axle) {
         for (int side = -1; side <= 1; side += 2) {
-            const float lx = float(side) * 0.91f;
-            drawGaragePart(baseX, baseY, baseZ, lx, -0.18f, wheelZ[axle],
-                           0.25f, 0.47f, 0.62f, yaw,
-                           0.018f, 0.018f, 0.020f);
-            drawGaragePart(baseX, baseY, baseZ, lx, -0.18f, wheelZ[axle],
-                           0.27f, 0.26f, 0.26f, yaw,
+            const float lx = float(side) * 0.87f;
+            drawGaragePart(baseX, -1.00f, baseZ, lx, 0.22f, wheelZ[axle],
+                           0.20f, 0.42f, 0.56f, yaw,
+                           0.015f, 0.015f, 0.018f);
+            drawGaragePart(baseX, -1.00f, baseZ, lx, 0.22f, wheelZ[axle],
+                           0.215f, 0.23f, 0.24f, yaw,
                            tireAccent, tireAccent, tireAccent);
         }
     }
-
-    // Front lamps, marker strip, plate and upgrade-visible intercooler.
-    drawGaragePart(baseX, baseY, baseZ, -0.55f, 0.13f, 1.79f,
-                   0.38f, 0.11f, 0.08f, yaw,
-                   0.95f, 0.86f, 0.58f);
-    drawGaragePart(baseX, baseY, baseZ,  0.55f, 0.13f, 1.79f,
-                   0.38f, 0.11f, 0.08f, yaw,
-                   0.95f, 0.86f, 0.58f);
-    drawGaragePart(baseX, baseY, baseZ, 0.0f, -0.01f, 1.82f,
-                   0.52f, 0.12f, 0.06f, yaw,
+    // Front lamps are at local -Z on the recovered source shell.
+    drawGaragePart(baseX, -1.00f, baseZ, -0.52f, 0.45f, -2.03f,
+                   0.32f, 0.10f, 0.055f, yaw,
+                   0.96f, 0.86f, 0.58f);
+    drawGaragePart(baseX, -1.00f, baseZ,  0.52f, 0.45f, -2.03f,
+                   0.32f, 0.10f, 0.055f, yaw,
+                   0.96f, 0.86f, 0.58f);
+    // Intercooler accent grows slightly with turbo level.
+    drawGaragePart(baseX, -1.00f, baseZ, 0.0f, 0.20f, -2.05f,
+                   0.52f, 0.12f, 0.035f, yaw,
                    0.10f, 0.13f + turboAccent * 0.20f, 0.16f + turboAccent * 0.28f);
-    drawGaragePart(baseX, baseY, baseZ, 0.0f, -0.18f, 1.90f,
-                   0.38f, 0.16f, 0.04f, yaw,
-                   0.72f, 0.74f, 0.70f);
-
-    // Rear lamps give the rotating display a readable back side too.
-    drawGaragePart(baseX, baseY, baseZ, -0.50f, 0.09f, -1.79f,
-                   0.34f, 0.11f, 0.07f, yaw,
-                   0.90f, 0.025f, 0.012f);
-    drawGaragePart(baseX, baseY, baseZ,  0.50f, 0.09f, -1.79f,
-                   0.34f, 0.11f, 0.07f, yaw,
-                   0.90f, 0.025f, 0.012f);
 }
 
 void drawGarageShelf(float x, float z, float width, float height, float depth) {
@@ -1131,7 +1201,7 @@ void printUpgradeLine(int row, bool selected, const char* name,
 
 void drawGarageHud(const GarageState& garage, int selection, const char* status) {
     const auto cfg = garage.makeVehicleConfig();
-    std::printf("\x1b[1;1HNR TUNING // v0.012 SHOWROOM      \x1b[K");
+    std::printf("\x1b[1;1HNR TUNING // v0.015 LIVISA      \x1b[K");
     std::printf("\x1b[2;1H$%-6d   RECORD %dW / %dL            \x1b[K",
                 garage.cash(), garage.wins(), garage.losses());
     std::printf("\x1b[3;1H%.0fNm  +%.0fhp turbo  grip %.2f/%.2f\x1b[K",
@@ -1176,6 +1246,7 @@ int main(int argc, char** argv) {
     C3D_RenderTargetSetOutput(top, GFX_TOP, GFX_LEFT, DISPLAY_TRANSFER_FLAGS);
 
     sceneInit();
+    audioTestInit();
     GarageState garage;
     Vehicle car(garage.makeVehicleConfig());
     RaceSession race;
@@ -1185,6 +1256,9 @@ int main(int argc, char** argv) {
     int garageSelection = 0;
     const char* garageStatus = "Tune the build, rotate the car, then press Y.";
     float garageSpin = 0.0f;
+    // World travel is intentionally separate from RaceSession progress.
+    // RaceSession freezes when either racer finishes; the road must not.
+    float worldProgressM = 0.0f;
 
     int collisionCount = 0;
     int wallHitCount = 0;
@@ -1205,6 +1279,7 @@ int main(int argc, char** argv) {
         opponentCollisionCooldown = 0.0f;
         wallCooldown = 0.0f;
         rewardGiven = false;
+        worldProgressM = 0.0f;
     };
 
     consoleClear();
@@ -1326,6 +1401,17 @@ int main(int argc, char** argv) {
         }
 
         car.step(simIn, dt);
+
+        // Keep visual world travel alive after a race result. Previously the
+        // renderer used rt.playerProgressM, but RaceSession stops updating that
+        // value as soon as either racer finishes. That made the entire scenery
+        // freeze while the speedometer still showed the car moving.
+        if (race.telemetry().phase != RacePhase::Countdown) {
+            worldProgressM += (car.telemetry().speedKph / 3.6f) * dt;
+            worldProgressM = clampf(worldProgressM, 0.0f,
+                                    gRoute.totalLengthM() - 0.001f);
+        }
+
         if (std::fabs(car.telemetry().posX) > kRoadLimit && wallCooldown <= 0.0f) {
             ++wallHitCount;
             wallCooldown = 0.5f;
@@ -1354,19 +1440,19 @@ int main(int argc, char** argv) {
         C3D_FrameDrawOn(top);
         C3D_BindProgram(&gProgram);
         C3D_FVUnifMtx4x4(GPU_VERTEX_SHADER, gLocProjection, &gProjection);
-        drawHighway(s, traffic, rt, race.nextGateDistanceM(), in.brake > 0.1f, rt.playerProgressM);
+        drawHighway(s, traffic, rt, race.nextGateDistanceM(), in.brake > 0.1f, worldProgressM);
         C3D_FrameEnd(0);
 
         if (rt.phase == RacePhase::Countdown) {
             const int count = std::max(1, int(std::ceil(rt.countdown)));
-            std::printf("\x1b[1;1HNR3DS v0.014 - SMOOTH SOURCE C1    \x1b[K");
+            std::printf("\x1b[1;1HNR3DS v0.015 - LONG C1 + LIVISA    \x1b[K");
             std::printf("\x1b[5;1HRACE: GET READY  %d          \x1b[K", count);
         } else if (rt.phase == RacePhase::Racing) {
-            std::printf("\x1b[1;1HNR3DS v0.014 - SMOOTH SOURCE C1    \x1b[K");
+            std::printf("\x1b[1;1HNR3DS v0.015 - LONG C1 + LIVISA    \x1b[K");
             std::printf("\x1b[5;1HRACE: GO  CP %d/%d             \x1b[K",
                         rt.checkpointIndex, int(RaceSession::kCheckpointCount));
         } else {
-            std::printf("\x1b[1;1HNR3DS v0.014 - SMOOTH SOURCE C1    \x1b[K");
+            std::printf("\x1b[1;1HNR3DS v0.015 - LONG C1 + LIVISA    \x1b[K");
             std::printf("\x1b[5;1HRESULT: %s                 \x1b[K",
                         rt.playerWon ? "YOU WIN +$1000" : "RIVAL WINS +$300");
             std::printf("\x1b[6;1HY=garage  SELECT=retry          \x1b[K");
@@ -1386,18 +1472,20 @@ int main(int argc, char** argv) {
         std::printf("\x1b[12;1HSteer raw/filt: %5.2f/%5.2f \x1b[K", in.steer, s.steerFiltered);
         std::printf("\x1b[13;1HHits traffic/rival/wall: %d/%d/%d\x1b[K",
                     collisionCount, rivalHitCount, wallHitCount);
-        const auto& currentSection = gRoute.sectionAt(rt.playerProgressM);
+        const auto& currentSection = gRoute.sectionAt(worldProgressM);
         std::printf("\x1b[14;1HZone: %-12s chunks %d-%d\x1b[K",
                     nr3ds::ExpresswayRoute::styleName(currentSection.style),
-                    gRoute.activeChunkFirst(rt.playerProgressM),
-                    gRoute.activeChunkLast(rt.playerProgressM));
+                    gRoute.activeChunkFirst(worldProgressM),
+                    gRoute.activeChunkLast(worldProgressM));
         std::printf("\x1b[15;1HSource: %-18s\x1b[K", currentSection.sourceName);
-        std::printf("\x1b[16;1HGeo: source LOD + stable stream\x1b[K");
+        std::printf("\x1b[16;1HGeo: source LOD + Livisa + long C1\x1b[K");
+        std::printf("\x1b[17;1HAudio: %s\x1b[K", gAudioReady ? "NDSP test loop" : "DSP unavailable");
         std::printf("\x1b[18;1HCPU: %6.2f%% GPU: %6.2f%%\x1b[K",
                     C3D_GetProcessingTime() * 6.0f,
                     C3D_GetDrawingTime() * 6.0f);
     }
 
+    audioTestExit();
     sceneExit();
     C3D_Fini();
     gfxExit();

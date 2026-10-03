@@ -36,7 +36,7 @@ struct RouteLocalFrame {
 class ExpresswayRoute {
 public:
     static constexpr float kChunkLengthM = 80.0f;
-    static constexpr std::size_t kSectionCount = 3;
+    static constexpr std::size_t kSectionCount = 13;
 
     ExpresswayRoute();
 
