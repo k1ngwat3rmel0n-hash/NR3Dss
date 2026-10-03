@@ -476,73 +476,244 @@ void drawHighway(const nr3ds::Telemetry& s,
 }
 
 
-void drawGarageScene(const GarageState& garage, float spin) {
-    // Cheap native garage scene: floor, walls, fluorescent strips, cabinets and
-    // the same primitive player car on a display pad. No textures/assets needed.
-    drawCube(0.0f, -1.38f, -10.0f, 15.0f, 0.10f, 22.0f, 0.0f,
-             0.055f, 0.060f, 0.070f);
-    drawCube(0.0f, 3.2f, -20.5f, 15.0f, 9.0f, 0.20f, 0.0f,
-             0.035f, 0.040f, 0.050f);
-    drawCube(-7.3f, 2.0f, -11.0f, 0.20f, 7.0f, 20.0f, 0.0f,
-             0.045f, 0.050f, 0.060f);
-    drawCube( 7.3f, 2.0f, -11.0f, 0.20f, 7.0f, 20.0f, 0.0f,
-             0.045f, 0.050f, 0.060f);
+void drawGaragePart(float baseX, float baseY, float baseZ,
+                    float localX, float localY, float localZ,
+                    float sx, float sy, float sz,
+                    float yaw,
+                    float r, float g, float b) {
+    const float c = std::cos(yaw);
+    const float sn = std::sin(yaw);
+    const float worldX = baseX + localX * c + localZ * sn;
+    const float worldZ = baseZ - localX * sn + localZ * c;
+    drawCube(worldX, baseY + localY, worldZ, sx, sy, sz, yaw, r, g, b);
+}
 
-    // Ceiling light strips.
-    for (int i = 0; i < 4; ++i) {
-        const float z = -5.0f - float(i) * 5.0f;
-        drawCube(-3.0f, 4.2f, z, 2.8f, 0.08f, 0.22f, 0.0f,
-                 0.78f, 0.82f, 0.86f);
-        drawCube( 3.0f, 4.2f, z, 2.8f, 0.08f, 0.22f, 0.0f,
-                 0.78f, 0.82f, 0.86f);
+void drawShowroomCar(const GarageState& garage, float spin) {
+    const float baseX = 0.15f;
+    const float baseY = -0.62f;
+    const float baseZ = -7.65f;
+    const float yaw = 0.34f + std::sin(spin * 0.70f) * 0.18f;
+
+    const float tireAccent = 0.22f + 0.10f * float(garage.tireLevel());
+    const float turboAccent = 0.22f + 0.10f * float(garage.turboLevel());
+    const float engineAccent = 0.72f + 0.055f * float(garage.engineLevel());
+
+    // Low-poly 1980s/1990s Japanese-coupe-inspired silhouette. Everything is
+    // still generated from cuboids so this remains tiny and Old-3DS friendly.
+    drawGaragePart(baseX, baseY, baseZ, 0.0f, 0.05f, 0.0f,
+                   1.72f, 0.34f, 3.48f, yaw,
+                   engineAccent, 0.050f, 0.035f);
+    drawGaragePart(baseX, baseY, baseZ, 0.0f, -0.13f, 0.10f,
+                   1.80f, 0.17f, 3.65f, yaw,
+                   0.42f, 0.030f, 0.026f);
+    drawGaragePart(baseX, baseY, baseZ, 0.0f, 0.23f, 0.92f,
+                   1.55f, 0.16f, 1.05f, yaw,
+                   engineAccent * 0.96f, 0.045f, 0.032f);
+    drawGaragePart(baseX, baseY, baseZ, 0.0f, 0.46f, -0.22f,
+                   1.24f, 0.49f, 1.42f, yaw,
+                   0.075f, 0.105f, 0.125f);
+    drawGaragePart(baseX, baseY, baseZ, 0.0f, 0.69f, -0.24f,
+                   1.02f, 0.10f, 1.08f, yaw,
+                   0.34f, 0.040f, 0.035f);
+    drawGaragePart(baseX, baseY, baseZ, 0.0f, 0.17f, -1.44f,
+                   1.55f, 0.18f, 0.52f, yaw,
+                   engineAccent * 0.92f, 0.042f, 0.030f);
+
+    // Bumpers / skirts.
+    drawGaragePart(baseX, baseY, baseZ, 0.0f, -0.05f, 1.78f,
+                   1.76f, 0.20f, 0.20f, yaw,
+                   0.30f, 0.025f, 0.023f);
+    drawGaragePart(baseX, baseY, baseZ, 0.0f, -0.04f, -1.78f,
+                   1.72f, 0.18f, 0.18f, yaw,
+                   0.30f, 0.025f, 0.023f);
+    drawGaragePart(baseX, baseY, baseZ, -0.91f, -0.06f, 0.0f,
+                   0.11f, 0.16f, 2.80f, yaw,
+                   0.20f, 0.020f, 0.020f);
+    drawGaragePart(baseX, baseY, baseZ,  0.91f, -0.06f, 0.0f,
+                   0.11f, 0.16f, 2.80f, yaw,
+                   0.20f, 0.020f, 0.020f);
+
+    // Wheels and hubs.
+    const float wheelZ[2] = {1.12f, -1.10f};
+    for (int axle = 0; axle < 2; ++axle) {
+        for (int side = -1; side <= 1; side += 2) {
+            const float lx = float(side) * 0.91f;
+            drawGaragePart(baseX, baseY, baseZ, lx, -0.18f, wheelZ[axle],
+                           0.25f, 0.47f, 0.62f, yaw,
+                           0.018f, 0.018f, 0.020f);
+            drawGaragePart(baseX, baseY, baseZ, lx, -0.18f, wheelZ[axle],
+                           0.27f, 0.26f, 0.26f, yaw,
+                           tireAccent, tireAccent, tireAccent);
+        }
     }
 
-    // Tool cabinets / work benches.
-    drawCube(-5.7f, -0.35f, -10.5f, 2.0f, 1.7f, 3.2f, 0.0f,
-             0.18f, 0.055f, 0.045f);
-    drawCube( 5.7f, -0.35f, -10.5f, 2.0f, 1.7f, 3.2f, 0.0f,
-             0.06f, 0.10f, 0.16f);
+    // Front lamps, marker strip, plate and upgrade-visible intercooler.
+    drawGaragePart(baseX, baseY, baseZ, -0.55f, 0.13f, 1.79f,
+                   0.38f, 0.11f, 0.08f, yaw,
+                   0.95f, 0.86f, 0.58f);
+    drawGaragePart(baseX, baseY, baseZ,  0.55f, 0.13f, 1.79f,
+                   0.38f, 0.11f, 0.08f, yaw,
+                   0.95f, 0.86f, 0.58f);
+    drawGaragePart(baseX, baseY, baseZ, 0.0f, -0.01f, 1.82f,
+                   0.52f, 0.12f, 0.06f, yaw,
+                   0.10f, 0.13f + turboAccent * 0.20f, 0.16f + turboAccent * 0.28f);
+    drawGaragePart(baseX, baseY, baseZ, 0.0f, -0.18f, 1.90f,
+                   0.38f, 0.16f, 0.04f, yaw,
+                   0.72f, 0.74f, 0.70f);
 
-    // Car display pad. Upgrade levels subtly change the accent rings so a build
-    // has visible progression even before proper art/assets arrive.
-    const float upgradeGlow = 0.08f + 0.035f * float(
-        garage.engineLevel() + garage.turboLevel() + garage.tireLevel());
-    drawCube(0.0f, -1.20f, -7.2f, 4.8f, 0.08f, 7.0f, 0.0f,
-             0.10f + upgradeGlow, 0.10f, 0.12f + upgradeGlow * 0.5f);
+    // Rear lamps give the rotating display a readable back side too.
+    drawGaragePart(baseX, baseY, baseZ, -0.50f, 0.09f, -1.79f,
+                   0.34f, 0.11f, 0.07f, yaw,
+                   0.90f, 0.025f, 0.012f);
+    drawGaragePart(baseX, baseY, baseZ,  0.50f, 0.09f, -1.79f,
+                   0.34f, 0.11f, 0.07f, yaw,
+                   0.90f, 0.025f, 0.012f);
+}
 
-    const float yaw = std::sin(spin * 0.45f) * 0.13f;
-    drawCube(0.0f, -0.62f, -7.2f, 1.55f, 0.42f, 3.2f, yaw,
-             0.78f, 0.035f, 0.025f);
-    drawCube(0.0f, -0.21f, -7.35f, 1.18f, 0.34f, 1.42f, yaw,
-             0.055f, 0.10f, 0.14f);
-    drawCube(-0.83f, -0.78f, -6.15f, 0.22f, 0.32f, 0.52f, yaw,
-             0.015f, 0.015f, 0.018f);
-    drawCube( 0.83f, -0.78f, -6.15f, 0.22f, 0.32f, 0.52f, yaw,
-             0.015f, 0.015f, 0.018f);
-    drawCube(-0.83f, -0.78f, -8.18f, 0.22f, 0.32f, 0.52f, yaw,
-             0.015f, 0.015f, 0.018f);
-    drawCube( 0.83f, -0.78f, -8.18f, 0.22f, 0.32f, 0.52f, yaw,
-             0.015f, 0.015f, 0.018f);
+void drawGarageShelf(float x, float z, float width, float height, float depth) {
+    const float post = 0.10f;
+    drawCube(x - width * 0.5f, 0.35f, z, post, height, depth, 0.0f,
+             0.18f, 0.16f, 0.12f);
+    drawCube(x + width * 0.5f, 0.35f, z, post, height, depth, 0.0f,
+             0.18f, 0.16f, 0.12f);
+    for (int i = 0; i < 4; ++i) {
+        const float y = -0.82f + float(i) * 0.72f;
+        drawCube(x, y, z, width, 0.08f, depth, 0.0f,
+                 0.16f, 0.15f, 0.13f);
+        // Sparse product boxes so the shelves read as a parts store without
+        // requiring texture atlases yet.
+        if (i < 3) {
+            drawCube(x - width * 0.23f, y + 0.27f, z - 0.04f,
+                     width * 0.24f, 0.38f, depth * 0.70f, 0.0f,
+                     0.58f, 0.48f, 0.12f);
+            drawCube(x + width * 0.16f, y + 0.23f, z + 0.02f,
+                     width * 0.28f, 0.30f, depth * 0.64f, 0.0f,
+                     0.26f, 0.30f, 0.34f);
+        }
+    }
+}
+
+void drawTireStack(float x, float z, int count) {
+    for (int i = 0; i < count; ++i) {
+        drawCube(x, -1.02f + float(i) * 0.36f, z,
+                 0.82f, 0.30f, 0.82f, 0.0f,
+                 0.025f, 0.025f, 0.028f);
+        drawCube(x, -1.01f + float(i) * 0.36f, z,
+                 0.35f, 0.32f, 0.35f, 0.0f,
+                 0.12f, 0.12f, 0.13f);
+    }
+}
+
+void drawGarageScene(const GarageState& garage, float spin) {
+    // v0.010 showroom pass: bright Japanese tuning-shop proportions inspired by
+    // the reference mood, but built from original low-poly geometry and colors.
+    const float wallR = 0.36f, wallG = 0.34f, wallB = 0.27f;
+
+    // Bright tiled floor, back wall, side walls and ceiling.
+    drawCube(0.0f, -1.40f, -11.2f, 16.5f, 0.10f, 24.0f, 0.0f,
+             0.63f, 0.61f, 0.52f);
+    drawCube(0.0f, 3.0f, -22.2f, 16.5f, 9.2f, 0.20f, 0.0f,
+             wallR, wallG, wallB);
+    drawCube(-8.15f, 1.8f, -12.0f, 0.20f, 7.0f, 21.0f, 0.0f,
+             0.25f, 0.24f, 0.21f);
+    drawCube( 8.15f, 1.8f, -12.0f, 0.20f, 7.0f, 21.0f, 0.0f,
+             0.25f, 0.24f, 0.21f);
+    drawCube(0.0f, 4.35f, -11.5f, 16.5f, 0.12f, 22.5f, 0.0f,
+             0.44f, 0.43f, 0.38f);
+
+    // Ceiling tile beams and fluorescent panels.
+    for (int row = 0; row < 4; ++row) {
+        const float z = -5.2f - float(row) * 4.5f;
+        drawCube(0.0f, 4.20f, z, 15.5f, 0.05f, 0.08f, 0.0f,
+                 0.22f, 0.22f, 0.20f);
+        for (int col = -1; col <= 1; ++col) {
+            drawCube(float(col) * 4.4f, 4.11f, z,
+                     2.6f, 0.07f, 0.42f, 0.0f,
+                     0.92f, 0.92f, 0.82f);
+        }
+    }
+
+    // Branded back-wall color band. This deliberately avoids copying the PC
+    // game's exact logo/art while hitting the same warm tuner-shop atmosphere.
+    drawCube(0.0f, 3.15f, -21.96f, 13.2f, 1.15f, 0.10f, 0.0f,
+             0.68f, 0.54f, 0.12f);
+    drawCube(0.0f, 3.67f, -21.88f, 13.2f, 0.14f, 0.06f, 0.0f,
+             0.72f, 0.06f, 0.045f);
+    drawCube(-4.2f, 3.67f, -21.80f, 3.4f, 0.13f, 0.05f, 0.0f,
+             0.86f, 0.86f, 0.80f);
+    drawCube( 4.2f, 3.67f, -21.80f, 3.4f, 0.13f, 0.05f, 0.0f,
+             0.86f, 0.86f, 0.80f);
+    drawCube(0.0f, 3.12f, -21.78f, 5.6f, 0.66f, 0.05f, 0.0f,
+             0.80f, 0.80f, 0.73f);
+    drawCube(0.0f, 3.12f, -21.71f, 4.7f, 0.40f, 0.04f, 0.0f,
+             0.68f, 0.08f, 0.055f);
+
+    // Long parts shelves, yellow aisle posts and small hanging banner blocks.
+    drawGarageShelf(-5.7f, -16.8f, 3.4f, 3.4f, 1.0f);
+    drawGarageShelf(-5.7f, -12.3f, 3.4f, 3.4f, 1.0f);
+    drawGarageShelf( 5.7f, -16.8f, 3.4f, 3.4f, 1.0f);
+    drawGarageShelf( 5.7f, -12.3f, 3.4f, 3.4f, 1.0f);
+    for (int side = -1; side <= 1; side += 2) {
+        for (int i = 0; i < 3; ++i) {
+            const float x = float(side) * 4.05f;
+            const float z = -11.0f - float(i) * 3.6f;
+            drawCube(x, 0.35f, z, 0.16f, 3.3f, 0.16f, 0.0f,
+                     0.78f, 0.60f, 0.10f);
+            drawCube(x, 1.62f, z + 0.02f, 0.46f, 0.64f, 0.08f, 0.0f,
+                     0.70f, 0.12f, 0.07f);
+        }
+    }
+
+    // Vending-machine silhouette on the left.
+    drawCube(-6.55f, -0.10f, -7.0f, 1.15f, 2.35f, 0.72f, 0.0f,
+             0.18f, 0.20f, 0.22f);
+    drawCube(-6.55f, 0.58f, -6.60f, 0.90f, 0.72f, 0.05f, 0.0f,
+             0.68f, 0.80f, 0.72f);
+    drawCube(-6.55f, -0.46f, -6.60f, 0.78f, 0.55f, 0.05f, 0.0f,
+             0.52f, 0.12f, 0.08f);
+
+    // Tire display on the right and a low tool chest.
+    drawTireStack(6.45f, -7.0f, 4);
+    drawTireStack(5.45f, -7.2f, 3);
+    drawCube(6.0f, -0.72f, -10.0f, 2.5f, 0.95f, 0.82f, 0.0f,
+             0.20f, 0.055f, 0.045f);
+    for (int i = 0; i < 3; ++i) {
+        drawCube(6.0f, -0.44f + float(i) * 0.23f, -9.57f,
+                 2.1f, 0.06f, 0.04f, 0.0f,
+                 0.34f, 0.08f, 0.055f);
+    }
+
+    // Dark textured-looking display mat and thin warm accent edge.
+    drawCube(0.15f, -1.26f, -7.65f, 5.5f, 0.05f, 7.4f, 0.0f,
+             0.07f, 0.065f, 0.060f);
+    drawCube(0.15f, -1.19f, -5.00f, 5.6f, 0.035f, 0.10f, 0.0f,
+             0.42f, 0.08f, 0.06f);
+
+    drawShowroomCar(garage, spin);
 }
 
 void printUpgradeLine(int row, bool selected, const char* name,
                       int level, int nextCost) {
+    const char* meter = level <= 0 ? "[---]" : (level == 1 ? "[#--]" : (level == 2 ? "[##-]" : "[###]"));
     if (nextCost < 0) {
-        std::printf("\x1b[%d;1H%c %-11s Lv%d  MAX          \x1b[K",
-                    row, selected ? '>' : ' ', name, level);
+        std::printf("\x1b[%d;1H%c %-8s %-5s Lv%d  MAX       \x1b[K",
+                    row, selected ? '>' : ' ', name, meter, level);
     } else {
-        std::printf("\x1b[%d;1H%c %-11s Lv%d -> %d  $%d  \x1b[K",
-                    row, selected ? '>' : ' ', name, level, level + 1, nextCost);
+        std::printf("\x1b[%d;1H%c %-8s %-5s Lv%d  $%-5d    \x1b[K",
+                    row, selected ? '>' : ' ', name, meter, level, nextCost);
     }
 }
 
 void drawGarageHud(const GarageState& garage, int selection, const char* status) {
-    std::printf("\x1b[1;1HNR3DS v0.009 - GARAGE          \x1b[K");
-    std::printf("\x1b[2;1HCash: $%d   W/L: %d/%d        \x1b[K",
+    const auto cfg = garage.makeVehicleConfig();
+    std::printf("\x1b[1;1HNR TUNING // v0.010 SHOWROOM      \x1b[K");
+    std::printf("\x1b[2;1H$%-6d   RECORD %dW / %dL            \x1b[K",
                 garage.cash(), garage.wins(), garage.losses());
-    std::printf("\x1b[3;1HDpad U/D select  A buy          \x1b[K");
-    std::printf("\x1b[4;1HDpad L/R tune   Y start race   \x1b[K");
+    std::printf("\x1b[3;1H%.0fNm  +%.0fhp turbo  grip %.2f/%.2f\x1b[K",
+                cfg.baseTorqueNm, cfg.turboMaxExtraHp,
+                cfg.frontGrip, cfg.rearGrip);
 
+    std::printf("\x1b[5;1H-- PARTS ---------------------------\x1b[K");
     printUpgradeLine(6, selection == 0, "ENGINE", garage.engineLevel(),
                      garage.nextCost(UpgradeKind::Engine));
     printUpgradeLine(7, selection == 1, "TURBO", garage.turboLevel(),
@@ -550,21 +721,20 @@ void drawGarageHud(const GarageState& garage, int selection, const char* status)
     printUpgradeLine(8, selection == 2, "TIRES", garage.tireLevel(),
                      garage.nextCost(UpgradeKind::Tires));
 
-    std::printf("\x1b[9;1H%c FINAL DRIVE   < %.2f >        \x1b[K",
+    std::printf("\x1b[10;1H-- TRANSMISSION --------------------\x1b[K");
+    std::printf("\x1b[11;1H%c FINAL DRIVE     < %.2f >       \x1b[K",
                 selection == 3 ? '>' : ' ', garage.finalDrive());
     for (int i = 0; i < 6; ++i) {
-        std::printf("\x1b[%d;1H%c GEAR %d        < %.2f >        \x1b[K",
-                    10 + i, selection == 4 + i ? '>' : ' ', i + 1,
+        std::printf("\x1b[%d;1H%c GEAR %d          < %.2f >       \x1b[K",
+                    12 + i, selection == 4 + i ? '>' : ' ', i + 1,
                     garage.gearRatio(std::size_t(i)));
     }
 
-    const auto cfg = garage.makeVehicleConfig();
-    std::printf("\x1b[17;1HBuild: %.0fNm  +%.0fhp turbo      \x1b[K",
-                cfg.baseTorqueNm, cfg.turboMaxExtraHp);
-    std::printf("\x1b[18;1HGrip F/R: %.2f / %.2f            \x1b[K",
-                cfg.frontGrip, cfg.rearGrip);
-    std::printf("\x1b[20;1H%-36s\x1b[K", status ? status : "");
-    std::printf("\x1b[22;1HSTART exits                      \x1b[K");
+    std::printf("\x1b[19;1H-- CONTROLS ------------------------\x1b[K");
+    std::printf("\x1b[20;1HUD select  A buy   LR tune          \x1b[K");
+    std::printf("\x1b[21;1HC-Pad rotates display   Y EXPRESSWAY\x1b[K");
+    std::printf("\x1b[23;1H%-38s\x1b[K", status ? status : "");
+    std::printf("\x1b[25;1HSTART exits                        \x1b[K");
 }
 
 } // namespace
@@ -588,7 +758,7 @@ int main(int argc, char** argv) {
 
     GameMode mode = GameMode::Garage;
     int garageSelection = 0;
-    const char* garageStatus = "Buy upgrades or tune gearing, then press Y.";
+    const char* garageStatus = "Tune the build, rotate the car, then press Y.";
     float garageSpin = 0.0f;
 
     int collisionCount = 0;
@@ -674,11 +844,18 @@ int main(int argc, char** argv) {
                 continue;
             }
 
-            garageSpin += dt;
-            Mtx_PerspTilt(&gProjection, C3D_AngleFromDegrees(58.0f),
+            circlePosition garageCp{};
+            hidCircleRead(&garageCp);
+            const float viewInput = clampf(float(garageCp.dx) / 156.0f, -1.0f, 1.0f);
+            if (std::fabs(viewInput) > 0.08f)
+                garageSpin += viewInput * dt * 2.2f;
+            else
+                garageSpin += dt * 0.22f;
+
+            Mtx_PerspTilt(&gProjection, C3D_AngleFromDegrees(55.0f),
                           C3D_AspectRatioTop, 0.05f, 80.0f, false);
             C3D_FrameBegin(C3D_FRAME_SYNCDRAW);
-            C3D_RenderTargetClear(top, C3D_CLEAR_ALL, 0x05070BFF, 0);
+            C3D_RenderTargetClear(top, C3D_CLEAR_ALL, 0x0A0907FF, 0);
             C3D_FrameDrawOn(top);
             C3D_BindProgram(&gProgram);
             C3D_FVUnifMtx4x4(GPU_VERTEX_SHADER, gLocProjection, &gProjection);
@@ -757,14 +934,14 @@ int main(int argc, char** argv) {
 
         if (rt.phase == RacePhase::Countdown) {
             const int count = std::max(1, int(std::ceil(rt.countdown)));
-            std::printf("\x1b[1;1HNR3DS v0.009 - STREET RACE    \x1b[K");
+            std::printf("\x1b[1;1HNR3DS v0.010 - STREET RACE    \x1b[K");
             std::printf("\x1b[5;1HRACE: GET READY  %d          \x1b[K", count);
         } else if (rt.phase == RacePhase::Racing) {
-            std::printf("\x1b[1;1HNR3DS v0.009 - STREET RACE    \x1b[K");
+            std::printf("\x1b[1;1HNR3DS v0.010 - STREET RACE    \x1b[K");
             std::printf("\x1b[5;1HRACE: GO  CP %d/%d             \x1b[K",
                         rt.checkpointIndex, int(RaceSession::kCheckpointCount));
         } else {
-            std::printf("\x1b[1;1HNR3DS v0.009 - STREET RACE    \x1b[K");
+            std::printf("\x1b[1;1HNR3DS v0.010 - STREET RACE    \x1b[K");
             std::printf("\x1b[5;1HRESULT: %s                 \x1b[K",
                         rt.playerWon ? "YOU WIN +$1000" : "RIVAL WINS +$300");
             std::printf("\x1b[6;1HY=garage  SELECT=retry          \x1b[K");

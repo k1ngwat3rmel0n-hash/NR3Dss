@@ -1,27 +1,24 @@
-# NR3DS v0.009
+# NR3DS v0.010
 
-Garage, tuning and race-reward milestone for the Old 3DS NIGHT-RUNNERS-style demake/reimplementation.
+Garage/showroom visual-overhaul milestone for the Old 3DS NIGHT-RUNNERS-style demake/reimplementation.
 
 ## What is new
 
-- Boots into a simple native 3D garage scene.
-- Session cash, wins and losses.
-- Race rewards: $1000 for a win, $300 for a loss.
-- Engine upgrades (3 levels).
-- Turbo upgrades (3 levels).
-- Tire/grip upgrades (3 levels).
-- Free final-drive tuning.
-- Free individual 1st-6th gear ratio tuning.
-- Upgrades actually alter the portable vehicle configuration used by the race.
-- `Y` starts a race from the garage and returns to the garage after a result.
-- Keeps the v0.008 race, rival, traffic, high-speed steering and wall-slide behavior.
+- Rebuilt the garage into a bright Japanese tuning-shop/showroom scene.
+- Added ceiling panels, fluorescent lights, parts shelves, product boxes, banners, tire stacks, a vending-machine silhouette, tool chest and a branded back-wall color band.
+- Replaced the very simple garage car with a more detailed low-poly coupe silhouette made entirely from native cuboids.
+- Added headlights, bumpers, skirts, dark glass, wheel hubs, a plate and an upgrade-visible intercooler accent.
+- The garage car now slowly rotates on the display mat; the Circle Pad can rotate the display faster in either direction.
+- Redesigned the bottom-screen garage HUD so parts, transmission settings and controls are grouped more cleanly.
+- Keeps the v0.009 economy, upgrades, gearing, race, rival, traffic, steering and wall-slide systems unchanged.
 
 ## Garage controls
 
 - D-pad Up/Down: select item
 - A: buy selected Engine/Turbo/Tires upgrade
 - D-pad Left/Right: adjust final drive or selected gear ratio
-- Y: start race
+- Circle Pad Left/Right: rotate showroom car
+- Y: start expressway race
 - START: exit
 
 ## Race controls
@@ -35,12 +32,6 @@ Garage, tuning and race-reward milestone for the Old 3DS NIGHT-RUNNERS-style dem
 - Y after finish: return to garage
 - START: exit
 
-## Economy
-
-The prototype starts with `$1100`, enough to make an initial build choice. Upgrades get progressively more expensive, while repeated races fund further tuning.
-
-This milestone deliberately keeps progression in memory only. Persistent save data is planned for the next progression milestone.
-
 ## Build
 
 Use the included GitHub Actions workflow, or run `make` from `3ds/` with devkitPro `3ds-dev` installed.
@@ -48,9 +39,11 @@ Use the included GitHub Actions workflow, or run `make` from `3ds/` with devkitP
 Expected output:
 
 ```text
-nr3ds_v009.3dsx
+nr3ds_v010.3dsx
 ```
 
-## Fidelity note
+## Visual direction
 
-The upgrade categories and loop are modeled after the kinds of engine/turbo/tire/gear systems found in the NIGHT-RUNNERS build we inspected, but this menu/economy is a lightweight native implementation for the demake. Exact original prices, progression balance and serialized Unity curves have not yet been imported.
+The new garage is an original low-poly interpretation of the Japanese tuning-shop atmosphere shown in the user's references. It does not reuse NIGHT-RUNNERS textures, meshes, logos or other copyrighted assets. The goal is to establish the same kind of mood while remaining practical for Old 3DS hardware.
+
+The next planned milestone is the highway presentation overhaul: tighter Tokyo-expressway proportions, tunnels, overhead signs, denser roadside detail and stronger speed sensation.
