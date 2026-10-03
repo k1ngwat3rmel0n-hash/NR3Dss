@@ -8,9 +8,12 @@
 
 #include "vshader_shbin.h"
 #include "nr_physics.hpp"
+#include "nr_race.hpp"
 
 using nr3ds::InputState;
 using nr3ds::Vehicle;
+using nr3ds::RaceSession;
+using nr3ds::RacePhase;
 
 namespace {
 
@@ -297,8 +300,71 @@ void drawTrafficCar(const TrafficCar& t, float cameraX, float playerWorldM) {
              1.0f * fog, 0.02f * fog, 0.01f * fog);
 }
 
+void drawRaceOpponent(const nr3ds::RaceTelemetry& race,
+                      float cameraX, float playerWorldM) {
+    const float relM = race.opponentProgressM - race.playerProgressM;
+    if (relM < -4.5f || relM > 195.0f) return;
+
+    const float center = roadCenterRelative(playerWorldM, relM);
+    const float yaw = roadYawRelative(playerWorldM, relM);
+    const float z = -5.2f - relM;
+    const float fog = 1.0f - clampf(std::max(relM, 0.0f) / 220.0f, 0.0f, 0.82f);
+    const float x = race.opponentLaneX + center - cameraX;
+
+    drawCube(x, -0.64f, z, 1.52f, 0.40f, 3.00f, yaw,
+             0.78f * fog, 0.26f * fog, 0.055f * fog);
+    drawCube(x, -0.26f, z - 0.15f, 1.08f, 0.31f, 1.30f, yaw,
+             0.055f * fog, 0.075f * fog, 0.095f * fog);
+    drawCube(x - 0.46f, -0.49f, z + 1.55f, 0.21f, 0.10f, 0.06f, yaw,
+             1.0f * fog, 0.03f * fog, 0.01f * fog);
+    drawCube(x + 0.46f, -0.49f, z + 1.55f, 0.21f, 0.10f, 0.06f, yaw,
+             1.0f * fog, 0.03f * fog, 0.01f * fog);
+}
+
+void drawRaceGate(float aheadM, float cameraX, float playerWorldM,
+                  bool finishGate, bool countdownGate) {
+    if (aheadM < 1.5f || aheadM > 190.0f) return;
+
+    const float center = roadCenterRelative(playerWorldM, aheadM);
+    const float yaw = roadYawRelative(playerWorldM, aheadM);
+    const float z = -5.2f - aheadM;
+    const float fog = 1.0f - clampf(aheadM / 220.0f, 0.0f, 0.82f);
+    const float roadX = center - cameraX;
+
+    float r = 0.08f, g = 0.62f, b = 0.78f;
+    if (finishGate) { r = 0.84f; g = 0.70f; b = 0.12f; }
+    if (countdownGate) { r = 0.82f; g = 0.08f; b = 0.04f; }
+
+    drawCube(roadX - 5.7f, 0.75f, z, 0.18f, 3.7f, 0.18f, yaw,
+             0.18f * fog, 0.22f * fog, 0.24f * fog);
+    drawCube(roadX + 5.7f, 0.75f, z, 0.18f, 3.7f, 0.18f, yaw,
+             0.18f * fog, 0.22f * fog, 0.24f * fog);
+    drawCube(roadX, 2.65f, z, 11.7f, 0.18f, 0.18f, yaw,
+             0.18f * fog, 0.22f * fog, 0.24f * fog);
+    drawCube(roadX, 2.35f, z - 0.12f, 4.8f, 0.55f, 0.10f, yaw,
+             r * fog, g * fog, b * fog);
+}
+
+bool resolveOpponentCollision(Vehicle& car, RaceSession& race, float& cooldown) {
+    if (cooldown > 0.0f || race.telemetry().phase != RacePhase::Racing) return false;
+    const auto& s = car.telemetry();
+    const auto& rt = race.telemetry();
+    const float relM = rt.opponentProgressM - rt.playerProgressM;
+    const float playerX = clampf(s.posX, -5.1f, 5.1f);
+    if (std::fabs(relM) < 2.7f && std::fabs(rt.opponentLaneX - playerX) < 1.35f) {
+        const float kick = (playerX <= rt.opponentLaneX) ? -0.75f : 0.75f;
+        car.applyImpact(0.78f, kick);
+        race.applyOpponentImpact(0.82f, 2.2f);
+        cooldown = 0.65f;
+        return true;
+    }
+    return false;
+}
+
 void drawHighway(const nr3ds::Telemetry& s,
                  const std::array<TrafficCar, kTrafficCount>& traffic,
+                 const nr3ds::RaceTelemetry& race,
+                 float nextGateM,
                  bool braking) {
     const float segLen = 10.0f;
     const float scroll = std::fmod(std::fabs(s.posY), segLen);
@@ -369,6 +435,14 @@ void drawHighway(const nr3ds::Telemetry& s,
         drawTrafficCar(t, cameraX, s.posY);
     }
 
+    drawRaceOpponent(race, cameraX, s.posY);
+    if (race.phase == RacePhase::Countdown) {
+        drawRaceGate(16.0f, cameraX, s.posY, false, true);
+    } else if (race.phase == RacePhase::Racing) {
+        const bool finishGate = race.checkpointIndex >= int(RaceSession::kCheckpointCount);
+        drawRaceGate(nextGateM, cameraX, s.posY, finishGate, false);
+    }
+
     // Cheap geometry-only headlight pool.
     drawCube(carX, -1.17f, -11.5f, 4.7f, 0.018f, 9.5f, 0.0f,
              0.22f, 0.20f, 0.12f);
@@ -411,16 +485,19 @@ int main(int argc, char** argv) {
 
     sceneInit();
     Vehicle car;
+    RaceSession race;
     auto traffic = makeTraffic();
     int collisionCount = 0;
     int wallHitCount = 0;
+    int rivalHitCount = 0;
     float collisionCooldown = 0.0f;
+    float opponentCollisionCooldown = 0.0f;
     float wallCooldown = 0.0f;
 
-    std::printf("NR3DS v0.007 - steering + wall slide\n");
+    std::printf("NR3DS v0.008 - first race\n");
     std::printf("A gas | B brake | X handbrake\n");
     std::printf("L/R shift | Circle Pad steer\n");
-    std::printf("SELECT reset | START exit\n");
+    std::printf("SELECT retry | START exit\n");
 
     while (aptMainLoop()) {
         hidScanInput();
@@ -430,10 +507,13 @@ int main(int argc, char** argv) {
 
         if (down & KEY_SELECT) {
             car.reset();
+            race.reset();
             traffic = makeTraffic();
             collisionCount = 0;
             wallHitCount = 0;
+            rivalHitCount = 0;
             collisionCooldown = 0.0f;
+            opponentCollisionCooldown = 0.0f;
             wallCooldown = 0.0f;
         }
 
@@ -450,21 +530,34 @@ int main(int argc, char** argv) {
 
         constexpr float dt = 1.0f / 60.0f;
         collisionCooldown = std::max(0.0f, collisionCooldown - dt);
+        opponentCollisionCooldown = std::max(0.0f, opponentCollisionCooldown - dt);
         wallCooldown = std::max(0.0f, wallCooldown - dt);
 
-        car.step(in, dt);
+        InputState simIn = in;
+        if (race.telemetry().phase == RacePhase::Countdown) {
+            simIn.throttle = 0.0f;
+            simIn.brake = 0.55f;
+            simIn.handbrake = 0.0f;
+        }
+
+        car.step(simIn, dt);
         if (std::fabs(car.telemetry().posX) > 5.1f && wallCooldown <= 0.0f) {
             ++wallHitCount;
             wallCooldown = 0.5f;
         }
         car.constrainLateral(-5.1f, 5.1f, 0.93f);
 
+        race.update(car.telemetry().speedKph, dt);
         updateTraffic(traffic, car.telemetry(), dt);
         if (resolveTrafficCollision(car, traffic, collisionCooldown)) {
             ++collisionCount;
         }
+        if (resolveOpponentCollision(car, race, opponentCollisionCooldown)) {
+            ++rivalHitCount;
+        }
 
         const auto& s = car.telemetry();
+        const auto& rt = race.telemetry();
         updateProjection(s.speedKph);
 
         C3D_FrameBegin(C3D_FRAME_SYNCDRAW);
@@ -472,17 +565,30 @@ int main(int argc, char** argv) {
         C3D_FrameDrawOn(top);
         C3D_BindProgram(&gProgram);
         C3D_FVUnifMtx4x4(GPU_VERTEX_SHADER, gLocProjection, &gProjection);
-        drawHighway(s, traffic, in.brake > 0.1f);
+        drawHighway(s, traffic, rt, race.nextGateDistanceM(), in.brake > 0.1f);
         C3D_FrameEnd(0);
 
-        std::printf("\x1b[6;1HSpeed: %6.1f km/h   \x1b[K", s.speedKph);
-        std::printf("\x1b[7;1HRPM:   %6.0f  Gear: %d \x1b[K", s.rpm, s.gear);
-        std::printf("\x1b[8;1HTurbo: %5.2f  Slip: %5.2f\x1b[K", s.turboSpool, s.rearSlip);
-        std::printf("\x1b[9;1HDrift: %6.1f deg       \x1b[K", s.driftAngleDeg);
-        std::printf("\x1b[10;1HTire:  %5.2f  HB: %5.2f\x1b[K", s.tireTemp, s.handbrakeTimer);
+        if (rt.phase == RacePhase::Countdown) {
+            const int count = std::max(1, int(std::ceil(rt.countdown)));
+            std::printf("\x1b[5;1HRACE: GET READY  %d          \x1b[K", count);
+        } else if (rt.phase == RacePhase::Racing) {
+            std::printf("\x1b[5;1HRACE: GO  CP %d/%d             \x1b[K",
+                        rt.checkpointIndex, int(RaceSession::kCheckpointCount));
+        } else {
+            std::printf("\x1b[5;1HRESULT: %s  SELECT=retry      \x1b[K",
+                        rt.playerWon ? "YOU WIN" : "RIVAL WINS");
+        }
+
+        std::printf("\x1b[6;1HTime: %6.2f  Dist: %4.0f/%3.0fm \x1b[K",
+                    rt.elapsed, rt.playerProgressM, RaceSession::kCourseLengthM);
+        std::printf("\x1b[7;1HRival gap: %+6.1fm  %5.0f km/h\x1b[K",
+                    rt.gapM, rt.opponentSpeedKph);
+        std::printf("\x1b[9;1HSpeed: %6.1f km/h Gear:%d    \x1b[K", s.speedKph, s.gear);
+        std::printf("\x1b[10;1HRPM:%6.0f Turbo:%4.2f Slip:%4.2f\x1b[K",
+                    s.rpm, s.turboSpool, s.rearSlip);
         std::printf("\x1b[11;1HSteer raw/filt: %5.2f/%5.2f \x1b[K", in.steer, s.steerFiltered);
-        std::printf("\x1b[12;1HTraffic: %d  Hits: %d/%d  \x1b[K",
-                    kTrafficCount, collisionCount, wallHitCount);
+        std::printf("\x1b[12;1HHits traffic/rival/wall: %d/%d/%d\x1b[K",
+                    collisionCount, rivalHitCount, wallHitCount);
         std::printf("\x1b[14;1HCPU: %6.2f%% GPU: %6.2f%%\x1b[K",
                     C3D_GetProcessingTime() * 6.0f,
                     C3D_GetDrawingTime() * 6.0f);

@@ -1,15 +1,19 @@
-# NR3DS v0.007
+# NR3DS v0.008
 
-Old 3DS driving prototype focused on high-speed steering precision and cleaner barrier contact behavior.
+First playable race-loop milestone for the Old 3DS NIGHT-RUNNERS-style demake/reimplementation.
 
-## Changes from v0.006
+## What is new
 
-- Keeps the high-speed steering curve, deadzone, and rate smoothing from v0.006.
-- Barrier contacts now slide along the wall instead of repeatedly bouncing/spinning the car.
-- Wall speed loss is much less aggressive, especially during shallow contact.
-- Traffic impacts are slightly softer so collisions remain recoverable.
-- Bottom-screen steering telemetry now shows raw Circle Pad input and filtered steering side-by-side.
-- Curved highway, traffic AI, collisions, turbo/heat/tire systems, and chase camera remain enabled.
+- 3-second race countdown.
+- One visible rival car with lightweight catch-up behavior.
+- 900 m sprint race.
+- Three checkpoint gantries plus a finish gantry.
+- Rival lane changes during the race.
+- Win/loss state and race timer.
+- Rival gap and speed telemetry on the bottom screen.
+- Player/rival collision handling.
+- SELECT instantly resets the race for another run.
+- Keeps the v0.007 high-speed precision steering and wall-slide behavior unchanged.
 
 ## Controls
 
@@ -17,10 +21,24 @@ Old 3DS driving prototype focused on high-speed steering precision and cleaner b
 - A: throttle
 - B: brake
 - X: handbrake
-- L/R: shift
-- SELECT: reset
+- L/R: shift down/up
+- SELECT: retry/reset race
 - START: exit
 
-## 3DS build
+## Build
 
-Use the existing GitHub Actions workflow or run `make` inside `3ds/` with devkitPro `3ds-dev`. Expected output: `nr3ds_v007.3dsx`.
+Use the included GitHub Actions workflow, or run `make` from `3ds/` with devkitPro `3ds-dev` installed.
+
+Expected output:
+
+```text
+nr3ds_v008.3dsx
+```
+
+## Race HUD
+
+The lower screen displays countdown/result, race time, player distance, checkpoint count, rival gap, rival speed, vehicle telemetry, steering telemetry, collision counters, and Citro3D CPU/GPU timing.
+
+## Fidelity note
+
+The driving core still uses the recovered NIGHT-RUNNERS-inspired engine/turbo/grip behavior from earlier milestones, while the chassis, rival AI, renderer, and race presentation are lightweight native implementations intended for Old 3DS hardware. Exact Unity-serialized handling curves have not yet been imported.

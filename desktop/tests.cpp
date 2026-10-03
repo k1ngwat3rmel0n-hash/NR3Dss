@@ -1,4 +1,5 @@
 #include "nr_physics.hpp"
+#include "nr_race.hpp"
 
 #include <cassert>
 #include <cmath>
@@ -43,6 +44,27 @@ int main() {
         assert(car.telemetry().engineHealth <= startHealth);
     }
 
-    std::puts("All NR3DS core tests passed.");
+    {
+        RaceSession race;
+        constexpr float dt = 1.0f / 60.0f;
+        for (int i = 0; i < 190; ++i) race.update(0.0f, dt);
+        assert(race.telemetry().phase == RacePhase::Racing);
+        assert(race.telemetry().elapsed > 0.0f);
+    }
+
+    {
+        RaceSession race;
+        constexpr float dt = 1.0f / 60.0f;
+        // Clear the countdown, then verify a fast player can complete the race.
+        for (int i = 0; i < 181; ++i) race.update(0.0f, dt);
+        for (int i = 0; i < 60 * 30 && race.telemetry().phase != RacePhase::Finished; ++i) {
+            race.update(220.0f, dt);
+        }
+        assert(race.telemetry().phase == RacePhase::Finished);
+        assert(race.telemetry().playerProgressM >= RaceSession::kCourseLengthM);
+        assert(race.telemetry().playerWon);
+    }
+
+    std::puts("All NR3DS core/race tests passed.");
     return 0;
 }
