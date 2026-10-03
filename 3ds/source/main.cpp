@@ -12,6 +12,7 @@
 #include "nr_garage.hpp"
 #include "nr_world.hpp"
 #include "nr_source_geometry.hpp"
+#include "source_meshes.hpp"
 
 using nr3ds::InputState;
 using nr3ds::Vehicle;
@@ -71,6 +72,8 @@ int gLocProjection = -1;
 int gLocModelView = -1;
 C3D_Mtx gProjection{};
 void* gVbo = nullptr;
+void* gSourceRoadVbo = nullptr;
+void* gSourceTunnelRoofVbo = nullptr;
 nr3ds::ExpresswayRoute gRoute;
 
 float clampf(float v, float lo, float hi) {
@@ -129,6 +132,31 @@ void drawCube(float x, float y, float z,
     C3D_DrawArrays(GPU_TRIANGLES, 0, kCubeVerts);
 }
 
+void bindPositionVbo(void* vbo, int stride) {
+    C3D_BufInfo* bufInfo = C3D_GetBufInfo();
+    BufInfo_Init(bufInfo);
+    BufInfo_Add(bufInfo, vbo, stride, 1, 0x0);
+}
+
+void drawSourceTriangles(void* vbo, int vertexCount,
+                         float x, float y, float z,
+                         float sx, float sy, float sz,
+                         float yaw,
+                         float r, float g, float b) {
+    if (!vbo || vertexCount <= 0) return;
+    bindPositionVbo(vbo, sizeof(SourceVertex));
+    C3D_Mtx modelView;
+    Mtx_Identity(&modelView);
+    Mtx_Translate(&modelView, x, y, z, true);
+    Mtx_RotateY(&modelView, yaw, true);
+    Mtx_Scale(&modelView, sx, sy, sz);
+    C3D_FVUnifMtx4x4(GPU_VERTEX_SHADER, gLocModelView, &modelView);
+    setColor(r, g, b, 1.0f);
+    C3D_DrawArrays(GPU_TRIANGLES, 0, vertexCount);
+    // Restore the cube stream immediately; all procedural scenery assumes it.
+    bindPositionVbo(gVbo, sizeof(Vertex));
+}
+
 void sceneInit() {
     gShaderDvlb = DVLB_ParseFile((u32*)vshader_shbin, vshader_shbin_size);
     shaderProgramInit(&gProgram);
@@ -147,9 +175,14 @@ void sceneInit() {
     gVbo = linearAlloc(sizeof(kCube));
     std::memcpy(gVbo, kCube, sizeof(kCube));
 
-    C3D_BufInfo* bufInfo = C3D_GetBufInfo();
-    BufInfo_Init(bufInfo);
-    BufInfo_Add(bufInfo, gVbo, sizeof(Vertex), 1, 0x0);
+    gSourceRoadVbo = linearAlloc(sizeof(kSourceRoadVerts));
+    if (gSourceRoadVbo)
+        std::memcpy(gSourceRoadVbo, kSourceRoadVerts, sizeof(kSourceRoadVerts));
+    gSourceTunnelRoofVbo = linearAlloc(sizeof(kSourceTunnelRoofVerts));
+    if (gSourceTunnelRoofVbo)
+        std::memcpy(gSourceTunnelRoofVbo, kSourceTunnelRoofVerts, sizeof(kSourceTunnelRoofVerts));
+
+    bindPositionVbo(gVbo, sizeof(Vertex));
 
     C3D_DepthTest(true, GPU_GREATER, GPU_WRITE_ALL);
     C3D_CullFace(GPU_CULL_NONE);
@@ -162,6 +195,8 @@ void sceneInit() {
 }
 
 void sceneExit() {
+    if (gSourceTunnelRoofVbo) linearFree(gSourceTunnelRoofVbo);
+    if (gSourceRoadVbo) linearFree(gSourceRoadVbo);
     if (gVbo) linearFree(gVbo);
     shaderProgramFree(&gProgram);
     if (gShaderDvlb) DVLB_Free(gShaderDvlb);
@@ -465,6 +500,18 @@ void drawSourceTunnelModule(float roadX, float roadY, float z, float yaw,
              roadHalf * 2.0f + 1.45f, 0.32f, 10.2f, yaw,
              0.39f * fog, 0.36f * fog, 0.25f * fog);
 
+    // Actual developer-authorized source LOD geometry from
+    // _TUNNEL_OG_2x2_LANE_HIGH_ROOF.520. The offline converter normalized
+    // the original Unity mesh into road-local coordinates, so we can retain
+    // its silhouette without carrying Unity's runtime/material system.
+    if ((segmentIndex & 1) == 0) {
+        const float sourceScale = roadHalf + 0.42f;
+        drawSourceTriangles(gSourceTunnelRoofVbo, kSourceTunnelRoofVertsCount,
+                            roadX, roadY + 2.70f, z,
+                            sourceScale, sourceScale, sourceScale, yaw,
+                            0.54f * fog, 0.47f * fog, 0.29f * fog);
+    }
+
     // Ribbing is one of the strongest tunnel depth cues in the original.
     if ((segmentIndex & 1) == 0) {
         drawCube(roadX - wallX + 0.18f, roadY + 1.72f, z,
@@ -528,15 +575,20 @@ void drawHighway(const nr3ds::Telemetry& s,
                  bool braking,
                  float routeProgressM) {
     const float segLen = 10.0f;
-    const float baseM = std::floor(std::max(routeProgressM, 0.0f) / segLen) * segLen;
+    // IMPORTANT: segment identity is absolute. v0.013 regenerated all prop
+    // patterns from loop index 0 whenever baseM crossed a 10 m boundary. That
+    // made lamps, lane dashes, supports and tunnel ribs visibly "reset" at
+    // speed. Keep a stable world segment ID and only slide the camera through it.
+    const int firstSeg = std::max(0, int(std::floor(std::max(routeProgressM, 0.0f) / segLen)) - 1);
 
     const float worldCarX = clampf(s.posX, -kRoadLimit, kRoadLimit);
     const float cameraX = worldCarX * 0.78f;
     const float carX = worldCarX - cameraX;
     const RoadStyle styleNow = gRoute.styleAt(routeProgressM);
 
-    for (int i = 0; i < 32; ++i) {
-        const float worldM = baseM + float(i) * segLen;
+    for (int i = 0; i < 36; ++i) {
+        const int segId = firstSeg + i;
+        const float worldM = float(segId) * segLen;
         if (worldM < 0.0f || worldM > gRoute.totalLengthM()) continue;
         const float aheadM = worldM - routeProgressM;
         if (aheadM < -7.0f) continue;
@@ -547,7 +599,7 @@ void drawHighway(const nr3ds::Telemetry& s,
         const auto& section = gRoute.sectionAt(worldM);
         const RoadStyle style = section.style;
         const auto rf = gRoute.localFrame(routeProgressM, aheadM);
-        if (rf.forwardM < -7.0f || rf.forwardM > 285.0f) continue;
+        if (rf.forwardM < -12.0f || rf.forwardM > 300.0f) continue;
         const float z = -4.7f - rf.forwardM;
         const float center = rf.lateralM;
         const float elev = rf.elevationM * 0.34f;
@@ -555,7 +607,12 @@ void drawHighway(const nr3ds::Telemetry& s,
         const float roadX = center - cameraX;
         const float roadY = -1.34f + elev;
         const float roadHalf = section.roadWidthM * 0.5f;
-        const float fog = 1.0f - clampf(std::max(rf.forwardM, 0.0f) / 285.0f, 0.0f, 0.88f);
+        const float baseFog = 1.0f - clampf(std::max(rf.forwardM, 0.0f) / 300.0f, 0.0f, 0.90f);
+        // New far segments fade in while still deep in the fog instead of
+        // appearing as a whole chunk on one frame.
+        const float horizonFade = clampf((300.0f - rf.forwardM) / 32.0f, 0.0f, 1.0f);
+        const float fog = baseFog * horizonFade;
+        if (fog <= 0.003f) continue;
 
         float roadR = 0.070f, roadG = 0.078f, roadB = 0.095f;
         float barrierR = 0.28f, barrierG = 0.29f, barrierB = 0.30f;
@@ -584,9 +641,22 @@ void drawHighway(const nr3ds::Telemetry& s,
                  0.22f, 0.72f, segLen, yaw,
                  barrierR * fog, barrierG * fog, barrierB * fog);
 
+        // First actual source-road geometry pass. AREA_2 double single
+        // template.013 is drawn sparsely over the procedural safety deck so
+        // holes or material differences cannot break drivability. Its stable
+        // segId cadence also prevents the old re-phasing/reset artifact.
+        if ((style == RoadStyle::HighLevel || style == RoadStyle::Junction) &&
+            (segId % 4) == 0) {
+            const float sourceScale = roadHalf * 0.96f;
+            drawSourceTriangles(gSourceRoadVbo, kSourceRoadVertsCount,
+                                roadX, roadY + 0.08f, z,
+                                sourceScale, sourceScale, sourceScale, yaw,
+                                roadR * 1.18f * fog, roadG * 1.18f * fog, roadB * 1.14f * fog);
+        }
+
         // Highly visible reflective lane markings. These are a cheap but strong
         // speed cue on the 3DS screen.
-        if ((i & 1) == 0) {
+        if ((segId & 1) == 0) {
             const float lineGlow = (style == RoadStyle::Tunnel) ? 1.0f : 0.90f;
             drawCube(roadX - kLaneWidth * 0.5f, roadY + 0.14f, z,
                      0.075f, 0.018f, 3.45f, yaw,
@@ -598,7 +668,7 @@ void drawHighway(const nr3ds::Telemetry& s,
 
         // Pools of sodium/fluorescent light are geometry overlays rather than
         // dynamic lights. This keeps the Old 3DS renderer cheap.
-        if ((i & 1) == 0 &&
+        if ((segId & 1) == 0 &&
             (style == RoadStyle::SodiumFence || style == RoadStyle::Tunnel ||
              style == RoadStyle::Underpass)) {
             const bool tunnel = style == RoadStyle::Tunnel;
@@ -613,24 +683,24 @@ void drawHighway(const nr3ds::Telemetry& s,
         // Unity road/fence/support mesh families, then reduced to cuboids so they
         // remain viable on Old 3DS.
         if (style == RoadStyle::HighLevel || style == RoadStyle::Junction) {
-            if ((i & 1) == 0) {
+            if ((segId & 1) == 0) {
                 drawSourceFence(roadX, roadY, z, yaw, roadHalf, fog,
                                 style == RoadStyle::Junction);
             }
-            if ((i % 6) == 2) {
-                drawSourceSupport(roadX, roadY, z, yaw, roadHalf, fog, i / 6);
+            if ((segId % 6) == 2) {
+                drawSourceSupport(roadX, roadY, z, yaw, roadHalf, fog, segId / 6);
             }
         }
         if (style == RoadStyle::Tunnel) {
-            drawSourceTunnelModule(roadX, roadY, z, yaw, roadHalf, fog, i);
+            drawSourceTunnelModule(roadX, roadY, z, yaw, roadHalf, fog, segId);
         }
-        if (style == RoadStyle::Junction && (i % 12) == 7) {
+        if (style == RoadStyle::Junction && (segId % 12) == 7) {
             drawTatsumiSourceProxyCluster(roadX, roadY, z, yaw, fog);
         }
 
         // Orange mesh/fence corridor from the highway reference footage.
         if (style == RoadStyle::SodiumFence) {
-            if ((i & 1) == 0) {
+            if ((segId & 1) == 0) {
                 for (int side = -1; side <= 1; side += 2) {
                     const float fx = roadX + float(side) * (roadHalf + 0.42f);
                     drawCube(fx, roadY + 1.62f, z - 2.7f,
@@ -647,7 +717,7 @@ void drawHighway(const nr3ds::Telemetry& s,
         }
 
         // Normal roadside lamps; much closer to the player than the old scene.
-        if ((i % 3) == 1 && style != RoadStyle::Tunnel && style != RoadStyle::Underpass) {
+        if ((segId % 3) == 1 && style != RoadStyle::Tunnel && style != RoadStyle::Underpass) {
             for (int side = -1; side <= 1; side += 2) {
                 const float lx = roadX + float(side) * (roadHalf + 1.05f);
                 drawCube(lx, roadY + 1.42f, z, 0.12f, 3.15f, 0.12f, yaw,
@@ -661,14 +731,14 @@ void drawHighway(const nr3ds::Telemetry& s,
             // The recovered source route is explicitly the AREA_2,1 HIGH branch.
             // Keep the player on an exposed upper deck with close infrastructure
             // rather than drawing the old temporary overhead-road corridor.
-            if ((i % 4) == 1) {
+            if ((segId % 4) == 1) {
                 for (int side = -1; side <= 1; side += 2) {
                     const float sx = roadX + float(side) * (roadHalf + 1.4f);
                     drawCube(sx, roadY - 2.0f, z, 0.55f, 4.2f, 0.55f, yaw,
                              0.11f * fog, 0.12f * fog, 0.14f * fog);
                 }
             }
-            if ((i % 5) == 2) {
+            if ((segId % 5) == 2) {
                 drawCube(roadX - roadHalf - 4.6f, roadY + 1.2f, z - 3.0f,
                          5.0f, 5.0f, 6.0f, yaw,
                          0.025f * fog, 0.035f * fog, 0.060f * fog);
@@ -681,7 +751,7 @@ void drawHighway(const nr3ds::Telemetry& s,
             drawCube(roadX - 1.0f, roadY + 4.20f, z,
                      13.0f, 0.35f, segLen + 0.25f, yaw,
                      0.12f * fog, 0.13f * fog, 0.14f * fog);
-            if ((i % 4) == 1) {
+            if ((segId % 4) == 1) {
                 drawCube(roadX - roadHalf - 1.7f, roadY + 1.65f, z,
                          0.75f, 3.6f, 0.75f, yaw,
                          0.15f * fog, 0.15f * fog, 0.15f * fog);
@@ -693,7 +763,7 @@ void drawHighway(const nr3ds::Telemetry& s,
             drawCube(roadX, roadY + 3.55f, z,
                      14.0f, 0.34f, segLen + 0.25f, yaw,
                      0.14f * fog, 0.14f * fog, 0.13f * fog);
-            if ((i & 1) == 0) {
+            if ((segId & 1) == 0) {
                 drawCube(roadX - 3.3f, roadY + 3.34f, z,
                          2.0f, 0.08f, 0.30f, yaw,
                          0.78f * fog, 0.72f * fog, 0.50f * fog);
@@ -712,7 +782,7 @@ void drawHighway(const nr3ds::Telemetry& s,
             drawCube(roadX, roadY + 3.62f, z,
                      13.0f, 0.30f, segLen + 0.20f, yaw,
                      0.45f * fog, 0.40f * fog, 0.27f * fog);
-            if ((i & 1) == 0) {
+            if ((segId & 1) == 0) {
                 drawCube(roadX - 2.7f, roadY + 3.38f, z,
                          2.2f, 0.08f, 0.32f, yaw,
                          1.0f * fog, 0.95f * fog, 0.72f * fog);
@@ -723,13 +793,13 @@ void drawHighway(const nr3ds::Telemetry& s,
         }
 
         // Buildings move much closer to the roadway in city/open sections.
-        if ((i % 4) == 0 &&
+        if ((segId % 4) == 0 &&
             (style == RoadStyle::Open || style == RoadStyle::DenseCity ||
              style == RoadStyle::Junction || style == RoadStyle::SodiumFence)) {
             const bool dense = style == RoadStyle::DenseCity || style == RoadStyle::Junction;
             const float sideDist = dense ? (roadHalf + 4.0f) : (roadHalf + 7.0f);
-            const float hL = (dense ? 6.0f : 4.0f) + float((i * 7) % 5) * 1.05f;
-            const float hR = (dense ? 5.5f : 3.5f) + float((i * 5) % 6) * 0.95f;
+            const float hL = (dense ? 6.0f : 4.0f) + float((segId * 7) % 5) * 1.05f;
+            const float hR = (dense ? 5.5f : 3.5f) + float((segId * 5) % 6) * 0.95f;
             drawCube(roadX - sideDist, roadY - 0.2f + hL * 0.5f, z - 2.0f,
                      dense ? 4.0f : 5.0f, hL, 6.0f, yaw,
                      0.028f * fog, 0.038f * fog, 0.060f * fog);
@@ -753,7 +823,7 @@ void drawHighway(const nr3ds::Telemetry& s,
             drawCube(rampX, roadY - 0.05f, z,
                      3.2f, 0.10f, segLen + 0.15f, yaw - 0.05f * secT,
                      0.065f * fog, 0.073f * fog, 0.088f * fog);
-            if ((i % 5) == 2) {
+            if ((segId % 5) == 2) {
                 drawCube(roadX, roadY + 2.75f, z,
                          11.8f, 0.13f, 0.18f, yaw,
                          0.16f * fog, 0.17f * fog, 0.17f * fog);
@@ -1280,7 +1350,7 @@ int main(int argc, char** argv) {
         updateProjection(s.speedKph);
 
         C3D_FrameBegin(C3D_FRAME_SYNCDRAW);
-        C3D_RenderTargetClear(top, C3D_CLEAR_ALL, clearColorForStyle(gRoute.styleAt(rt.playerProgressM)), 0);
+        C3D_RenderTargetClear(top, C3D_CLEAR_ALL, 0x020204FF, 0);
         C3D_FrameDrawOn(top);
         C3D_BindProgram(&gProgram);
         C3D_FVUnifMtx4x4(GPU_VERTEX_SHADER, gLocProjection, &gProjection);
@@ -1289,14 +1359,14 @@ int main(int argc, char** argv) {
 
         if (rt.phase == RacePhase::Countdown) {
             const int count = std::max(1, int(std::ceil(rt.countdown)));
-            std::printf("\x1b[1;1HNR3DS v0.013 - SOURCE GEO C1    \x1b[K");
+            std::printf("\x1b[1;1HNR3DS v0.014 - SMOOTH SOURCE C1    \x1b[K");
             std::printf("\x1b[5;1HRACE: GET READY  %d          \x1b[K", count);
         } else if (rt.phase == RacePhase::Racing) {
-            std::printf("\x1b[1;1HNR3DS v0.013 - SOURCE GEO C1    \x1b[K");
+            std::printf("\x1b[1;1HNR3DS v0.014 - SMOOTH SOURCE C1    \x1b[K");
             std::printf("\x1b[5;1HRACE: GO  CP %d/%d             \x1b[K",
                         rt.checkpointIndex, int(RaceSession::kCheckpointCount));
         } else {
-            std::printf("\x1b[1;1HNR3DS v0.013 - SOURCE GEO C1    \x1b[K");
+            std::printf("\x1b[1;1HNR3DS v0.014 - SMOOTH SOURCE C1    \x1b[K");
             std::printf("\x1b[5;1HRESULT: %s                 \x1b[K",
                         rt.playerWon ? "YOU WIN +$1000" : "RIVAL WINS +$300");
             std::printf("\x1b[6;1HY=garage  SELECT=retry          \x1b[K");
@@ -1322,7 +1392,7 @@ int main(int argc, char** argv) {
                     gRoute.activeChunkFirst(rt.playerProgressM),
                     gRoute.activeChunkLast(rt.playerProgressM));
         std::printf("\x1b[15;1HSource: %-18s\x1b[K", currentSection.sourceName);
-        std::printf("\x1b[16;1HGeo: source proxy + recovered path\x1b[K");
+        std::printf("\x1b[16;1HGeo: source LOD + stable stream\x1b[K");
         std::printf("\x1b[18;1HCPU: %6.2f%% GPU: %6.2f%%\x1b[K",
                     C3D_GetProcessingTime() * 6.0f,
                     C3D_GetDrawingTime() * 6.0f);

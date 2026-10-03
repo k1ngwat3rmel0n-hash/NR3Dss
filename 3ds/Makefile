@@ -7,14 +7,14 @@ endif
 TOPDIR ?= $(CURDIR)
 include $(DEVKITARM)/3ds_rules
 
-TARGET      := nr3ds_v013
+TARGET      := nr3ds_v014
 BUILD       := build
 SOURCES     := source ../core
 DATA        :=
 INCLUDES    := ../core
 
-APP_TITLE       := NR3DS v0.013
-APP_DESCRIPTION := Source-derived road tunnel fence and support proxy pass
+APP_TITLE       := NR3DS v0.014
+APP_DESCRIPTION := Stable streamed source-LOD road and tunnel pass
 APP_AUTHOR      := NR3DS project
 
 ARCH := -march=armv6k -mtune=mpcore -mfloat-abi=hard -mtp=soft

@@ -1,0 +1,32 @@
+{
+  "version": "0.014",
+  "permission_context": "User reports developer permission to use original assets.",
+  "source_assets": [
+    {
+      "file": "sharedassets11.assets",
+      "path_id": 2,
+      "name": "AREA_2 double single template.013",
+      "source_vertex_count": 640,
+      "source_index_count": 960,
+      "triangle_count": 320,
+      "converted_vertex_count": 960,
+      "use": "road-local source LOD detail overlay"
+    },
+    {
+      "file": "sharedassets11.assets",
+      "path_id": 31,
+      "name": "_TUNNEL_OG_2x2_LANE_HIGH_ROOF.520",
+      "source_vertex_count": 180,
+      "source_index_count": 270,
+      "triangle_count": 90,
+      "converted_vertex_count": 270,
+      "use": "road-local tunnel roof detail"
+    }
+  ],
+  "streaming_fix": {
+    "segment_length_m": 10.0,
+    "stable_absolute_segment_ids": true,
+    "far_horizon_m": 300.0,
+    "horizon_fade_m": 32.0
+  }
+}

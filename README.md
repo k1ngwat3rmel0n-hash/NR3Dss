@@ -1,32 +1,29 @@
-# NR3DS v0.013
+# NR3DS v0.014
 
-Source-geometry proxy milestone for the Old 3DS NIGHT-RUNNERS-style demake/reimplementation.
+Stable-source-stream milestone for the Old 3DS NIGHT-RUNNERS-style demake/reimplementation.
 
 ## What is new
 
-- Keeps the recovered ~2.09 km C1 branch introduced in v0.012.
-- Adds a source-geometry profiling layer based on meshes extracted from the supplied `sharedassets1.assets` file.
-- Replaces the plain high-level road edges with denser source-inspired fence modules.
-- Adds repeated support/piers derived from the `AREA_2_SUPPORTS2` mesh family.
-- Reworks the tunnel into a ribbed shell with wall modules, ceiling ribs, fluorescent strips and utility recesses.
-- Adds a small distant Tatsumi-source proxy cluster using the proportions/style of the supplied Tatsumi building, vending and fence meshes.
-- Keeps the v0.012 recovered centerline, elevation, traffic, rival, physics, steering, garage and upgrade systems intact.
-- Adds reproducible source mesh profile data under `tools/source_geometry_extraction/`.
+- Fixes the visible scenery "reset" / apparent car-lag artifact reported in v0.013.
+- Roadside objects now use stable absolute segment IDs instead of re-phasing every time the player crosses a 10 m boundary.
+- Lane dashes, lights, fences, supports, tunnel ribs, buildings and junction props therefore stay attached to the same world positions while the player moves through them.
+- Adds a far-horizon fade so newly active geometry appears inside the fog instead of popping in as a block.
+- Keeps a stable deep-night clear/background color while road-section lighting changes locally, avoiding full-screen flashes/pops at zone boundaries.
+- Integrates the first actual developer-authorized NIGHT-RUNNERS LOD mesh data into the native Citro3D renderer:
+  - `AREA_2 double single template.013` from `sharedassets11.assets` as a lightweight road-detail layer.
+  - `_TUNNEL_OG_2x2_LANE_HIGH_ROOF.520` from `sharedassets11.assets` as a tunnel-roof detail layer.
+- The source meshes are converted offline into compact position-only triangle arrays; Unity runtime/material data is not required on the 3DS.
+- Keeps the recovered ~2.09 km C1 centerline/elevation, traffic, rival, steering, collision, garage and upgrade systems intact.
 
-## What "source-derived" means in v0.013
+## Why v0.013 looked like it was lagging
 
-The original PC meshes are **not** copied wholesale into the 3DS renderer yet. v0.013 reads/measures selected Unity mesh metadata and turns those measurements into aggressively simplified cuboid proxies suitable for an Old 3DS.
+v0.013 rebuilt its procedural scenery pattern from loop index zero whenever the player's 10 m road bucket changed. The route itself moved continuously, but repeated details such as lamps, lane dashes, fence modules and tunnel ribs changed phase on the same frame. At speed this looked like the environment snapped backward/forward around the fixed chase-camera car.
 
-Selected source families include:
+v0.014 gives every 10 m module a permanent absolute segment number, so decorative cadence is deterministic in world space.
 
-- `AREA_TATSUMI_R ROAD_LOD0.004`
-- `AREA1_BIG_ROAD_2`
-- `_TATSUMI_MESH FENCE0_LOD0` / FENCE1 / FENCE2
-- `AREA_2_SUPPORTS2.001` / `.002`
-- `AREA_TATSUMI_BUILDING LOD0`
-- `AREA_TATSUMI_VENDING_LOD0`
+## Source-geometry status
 
-The actual `AREA_2,1` and `AREA_TUNNEL_2,1` render meshes live in other additive Unity scene asset files. Those can be converted section-by-section once their matching `levelXX` / `sharedassetsXX.assets` files are available.
+This is the first build to draw original LOD vertex geometry in Citro3D, but it is not yet a full direct rendering of each Unity scene mesh at its original world transform. The original LOD meshes are normalized into road-local modules and layered over the recovered route. Exact section-by-section source placement is the next conversion step.
 
 ## Controls
 
@@ -55,9 +52,9 @@ Use the included GitHub Actions workflow or run `make` in `3ds/` with devkitPro 
 Expected output:
 
 ```text
-nr3ds_v013.3dsx
+nr3ds_v014.3dsx
 ```
 
 ## Validation
 
-The portable physics, race, garage, recovered-world and source-profile tests pass on the desktop harness. The 3DS frontend also passes the local C++ syntax check used for this project. GitHub Actions remains the final devkitARM build check.
+The portable desktop physics/race/garage/world/source-profile test suite passes. The generated source-mesh header also compiles independently with a standard C++17 compiler. GitHub Actions remains the final devkitARM/Citro3D compile check.
