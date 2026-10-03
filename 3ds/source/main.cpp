@@ -124,10 +124,38 @@ constexpr int kAudioSamples = kAudioRate * kAudioLoopSeconds;
 s16* gAudioBuffer = nullptr;
 ndspWaveBuf gAudioWave{};
 bool gAudioReady = false;
+bool gAudioEmulatorStub = false;
+Result gAudioInitResult = 0;
 
 
 void audioTestInit() {
-    const Result rc = ndspInit();
+    // NDSP normally requires sdmc:/3ds/dspfirm.cdc. Azahar/Citra HLE accepts
+    // a zero-byte placeholder, while real hardware requires the real dumped
+    // DSP firmware. Never overwrite an existing firmware file.
+    Result rc = ndspInit();
+    gAudioInitResult = rc;
+
+    if (R_FAILED(rc)) {
+        FILE* existing = std::fopen("sdmc:/3ds/dspfirm.cdc", "rb");
+        if (existing) {
+            std::fclose(existing);
+        } else {
+            FILE* stub = std::fopen("sdmc:/3ds/dspfirm.cdc", "wb");
+            if (stub) {
+                std::fclose(stub);
+                rc = ndspInit();
+                gAudioInitResult = rc;
+                if (R_SUCCEEDED(rc)) {
+                    gAudioEmulatorStub = true;
+                } else {
+                    // On real hardware a zero-byte DSP image is invalid. Remove
+                    // our temporary probe so the user can later dump the real one.
+                    std::remove("sdmc:/3ds/dspfirm.cdc");
+                }
+            }
+        }
+    }
+
     if (R_FAILED(rc)) return;
 
     ndspSetOutputMode(NDSP_OUTPUT_STEREO);
@@ -205,6 +233,10 @@ void audioTestExit() {
         ndspExit();
         gAudioReady = false;
     }
+    if (gAudioEmulatorStub) {
+        std::remove("sdmc:/3ds/dspfirm.cdc");
+        gAudioEmulatorStub = false;
+    }
     if (gAudioBuffer) {
         linearFree(gAudioBuffer);
         gAudioBuffer = nullptr;
@@ -234,6 +266,44 @@ void roadLocalOffset(float roadX, float roadZ, float yaw,
     const float sn = std::sin(yaw);
     outX = roadX + lateralM * c + forwardM * sn;
     outZ = roadZ - lateralM * sn + forwardM * c;
+}
+
+struct RoadSpanPose {
+    float x = 0.0f;
+    float y = 0.0f;
+    float z = 0.0f;
+    float yaw = 0.0f;
+    float length = 0.0f;
+};
+
+// Build one wall/barrier span from its real route endpoints instead of taking
+// a long cuboid and merely rotating it around its center. On a bend this makes
+// neighboring spans actually meet along the curve, eliminating the square wall
+// ends that appeared to point straight across the tunnel in v0.017.1.
+RoadSpanPose roadSpanPose(float playerWorldM, float cameraX, float worldM,
+                          float lateralM, float spanM) {
+    const float half = spanM * 0.5f;
+    const float aWorld = clampf(worldM - half, 0.0f, gRoute.totalLengthM());
+    const float bWorld = clampf(worldM + half, 0.0f, gRoute.totalLengthM());
+    const auto a = gRoute.localFrame(playerWorldM, aWorld - playerWorldM);
+    const auto b = gRoute.localFrame(playerWorldM, bWorld - playerWorldM);
+
+    float ax = a.lateralM - cameraX;
+    float az = -4.7f - a.forwardM;
+    float bx = b.lateralM - cameraX;
+    float bz = -4.7f - b.forwardM;
+    roadLocalOffset(ax, az, a.yawRad, lateralM, 0.0f, ax, az);
+    roadLocalOffset(bx, bz, b.yawRad, lateralM, 0.0f, bx, bz);
+
+    const float dx = bx - ax;
+    const float dz = bz - az;
+    RoadSpanPose out;
+    out.x = (ax + bx) * 0.5f;
+    out.z = (az + bz) * 0.5f;
+    out.y = -1.34f + ((a.elevationM + b.elevationM) * 0.5f) * 0.34f;
+    out.yaw = std::atan2(dx, dz);
+    out.length = std::sqrt(dx * dx + dz * dz);
+    return out;
 }
 
 float roadCenterRelative(float playerWorldM, float aheadM) {
@@ -769,12 +839,17 @@ void drawSourceTunnelModule(float roadX, float roadY, float z, float yaw,
     float leftWallX = 0.0f, leftWallZ = 0.0f, rightWallX = 0.0f, rightWallZ = 0.0f;
     roadLocalOffset(roadX, z, yaw, -wallX, 0.0f, leftWallX, leftWallZ);
     roadLocalOffset(roadX, z, yaw,  wallX, 0.0f, rightWallX, rightWallZ);
-    drawCube(leftWallX, roadY + 1.58f, leftWallZ,
-             0.72f, 3.50f, 8.15f, yaw,
-             0.50f * fog, 0.43f * fog, 0.23f * fog);
-    drawCube(rightWallX, roadY + 1.58f, rightWallZ,
-             0.72f, 3.50f, 8.15f, yaw,
-             0.50f * fog, 0.43f * fog, 0.23f * fog);
+    // With the real tunnel texture active, the textured open wall strips below
+    // are the visible wall surface. Keeping these long closed cuboids exposed
+    // their end caps on bends (the beige/black panels reported in v0.017.1).
+    if (!gTunnelTextureReady) {
+        drawCube(leftWallX, roadY + 1.58f, leftWallZ,
+                 0.72f, 3.50f, 8.15f, yaw,
+                 0.50f * fog, 0.43f * fog, 0.23f * fog);
+        drawCube(rightWallX, roadY + 1.58f, rightWallZ,
+                 0.72f, 3.50f, 8.15f, yaw,
+                 0.50f * fog, 0.43f * fog, 0.23f * fog);
+    }
     drawCube(roadX, roadY + 3.53f, z,
              roadHalf * 2.0f + 1.45f, 0.32f, 8.2f, yaw,
              0.39f * fog, 0.36f * fog, 0.25f * fog);
@@ -919,13 +994,16 @@ void drawSourceTexturePass(float routeProgressM, float cameraX) {
             const float fog = baseFog * horizonFade;
             if (fog <= 0.003f) continue;
 
-            float lx = 0.0f, lz = 0.0f, rx = 0.0f, rz = 0.0f;
-            roadLocalOffset(roadX, z, yaw, -(roadHalf + 0.075f), 0.0f, lx, lz);
-            roadLocalOffset(roadX, z, yaw,  (roadHalf + 0.075f), 0.0f, rx, rz);
-            drawTexturedQuad(lx, roadY + 1.60f, lz,
-                             1.0f, 3.30f, segLen + 0.18f, yaw, fog);
-            drawTexturedQuad(rx, roadY + 1.60f, rz,
-                             1.0f, 3.30f, segLen + 0.18f, yaw, fog);
+            const RoadSpanPose leftSpan = roadSpanPose(
+                routeProgressM, cameraX, worldM, -(roadHalf + 0.075f), segLen);
+            const RoadSpanPose rightSpan = roadSpanPose(
+                routeProgressM, cameraX, worldM,  (roadHalf + 0.075f), segLen);
+            drawTexturedQuad(leftSpan.x, leftSpan.y + 1.60f, leftSpan.z,
+                             1.0f, 3.30f, leftSpan.length + 0.34f,
+                             leftSpan.yaw, fog);
+            drawTexturedQuad(rightSpan.x, rightSpan.y + 1.60f, rightSpan.z,
+                             1.0f, 3.30f, rightSpan.length + 0.34f,
+                             rightSpan.yaw, fog);
         }
 
         // Ceiling uses the horizontal quad and the same real tunnel-concrete
@@ -1033,15 +1111,15 @@ void drawHighway(const nr3ds::Telemetry& s,
         // paint and close roadside geometry are deliberate reference-driven changes.
         drawCube(roadX, roadY, z, section.roadWidthM, 0.12f, segLen + 0.30f, yaw,
                  roadR * fog, roadG * fog, roadB * fog);
-        float leftBarrierX = 0.0f, leftBarrierZ = 0.0f;
-        float rightBarrierX = 0.0f, rightBarrierZ = 0.0f;
-        roadLocalOffset(roadX, z, yaw, -(roadHalf + 0.16f), 0.0f, leftBarrierX, leftBarrierZ);
-        roadLocalOffset(roadX, z, yaw,  (roadHalf + 0.16f), 0.0f, rightBarrierX, rightBarrierZ);
-        drawCube(leftBarrierX, roadY + 0.58f, leftBarrierZ,
-                 0.22f, 0.72f, segLen + 0.12f, yaw,
+        const RoadSpanPose leftBarrier = roadSpanPose(
+            routeProgressM, cameraX, worldM, -(roadHalf + 0.16f), segLen);
+        const RoadSpanPose rightBarrier = roadSpanPose(
+            routeProgressM, cameraX, worldM,  (roadHalf + 0.16f), segLen);
+        drawCube(leftBarrier.x, leftBarrier.y + 0.58f, leftBarrier.z,
+                 0.22f, 0.72f, leftBarrier.length + 0.28f, leftBarrier.yaw,
                  barrierR * fog, barrierG * fog, barrierB * fog);
-        drawCube(rightBarrierX, roadY + 0.58f, rightBarrierZ,
-                 0.22f, 0.72f, segLen + 0.12f, yaw,
+        drawCube(rightBarrier.x, rightBarrier.y + 0.58f, rightBarrier.z,
+                 0.22f, 0.72f, rightBarrier.length + 0.28f, rightBarrier.yaw,
                  barrierR * fog, barrierG * fog, barrierB * fog);
 
         // v0.016 source atlas: different recovered LOD families are selected
@@ -1759,14 +1837,14 @@ int main(int argc, char** argv) {
 
         if (rt.phase == RacePhase::Countdown) {
             const int count = std::max(1, int(std::ceil(rt.countdown)));
-            std::printf("\x1b[1;1HNR3DS v0.017.1 - TEXTURE HOTFIX    \x1b[K");
+            std::printf("\x1b[1;1HNR3DS v0.017.2 - CURVED WALLS    \x1b[K");
             std::printf("\x1b[5;1HRACE: GET READY  %d          \x1b[K", count);
         } else if (rt.phase == RacePhase::Racing) {
-            std::printf("\x1b[1;1HNR3DS v0.017.1 - TEXTURE HOTFIX    \x1b[K");
+            std::printf("\x1b[1;1HNR3DS v0.017.2 - CURVED WALLS    \x1b[K");
             std::printf("\x1b[5;1HRACE: GO  CP %d/%d             \x1b[K",
                         rt.checkpointIndex, int(RaceSession::kCheckpointCount));
         } else {
-            std::printf("\x1b[1;1HNR3DS v0.017.1 - TEXTURE HOTFIX    \x1b[K");
+            std::printf("\x1b[1;1HNR3DS v0.017.2 - CURVED WALLS    \x1b[K");
             std::printf("\x1b[5;1HRESULT: %s                 \x1b[K",
                         rt.playerWon ? "YOU WIN +$1000" : "RIVAL WINS +$300");
             std::printf("\x1b[6;1HY=garage  SELECT=retry          \x1b[K");
@@ -1794,7 +1872,10 @@ int main(int argc, char** argv) {
         std::printf("\x1b[15;1HSource: %-18s\x1b[K", currentSection.sourceName);
         std::printf("\x1b[16;1HGeo: source meshes + Livisa\x1b[K");
         std::printf("\x1b[17;1HTex: ROAD2 + TUNNEL GRUNGE      \x1b[K");
-        std::printf("\x1b[18;1HAudio: %s\x1b[K", gAudioReady ? "NDSP test loop" : "DSP unavailable");
+        const char* audioLabel = gAudioReady
+            ? (gAudioEmulatorStub ? "NDSP test (Azahar stub)" : "NDSP test loop")
+            : "DSP unavailable - add dspfirm.cdc";
+        std::printf("\x1b[18;1HAudio: %-28s\x1b[K", audioLabel);
         std::printf("\x1b[19;1HCPU: %6.2f%% GPU: %6.2f%%\x1b[K",
                     C3D_GetProcessingTime() * 6.0f,
                     C3D_GetDrawingTime() * 6.0f);
