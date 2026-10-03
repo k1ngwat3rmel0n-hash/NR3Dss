@@ -103,6 +103,7 @@ u32 clearColorForStyle(RoadStyle style) {
         case RoadStyle::Underpass:   return 0x030303FF;
         case RoadStyle::Tunnel:      return 0x161107FF;
         case RoadStyle::Junction:    return 0x020307FF;
+        case RoadStyle::HighLevel:   return 0x010205FF;
         case RoadStyle::Open:        return 0x010207FF;
     }
     return CLEAR_COLOR;
@@ -302,10 +303,11 @@ bool resolveTrafficCollision(Vehicle& car,
 void drawTrafficCar(const TrafficCar& t, float cameraX, float playerWorldM) {
     if (t.distanceM < -3.0f || t.distanceM > 195.0f) return;
 
-    const float center = roadCenterRelative(playerWorldM, t.distanceM);
-    const float yaw = roadYawRelative(playerWorldM, t.distanceM);
-    const float z = -4.7f - t.distanceM;
-    const float elev = roadElevationRelative(playerWorldM, t.distanceM);
+    const auto rf = gRoute.localFrame(playerWorldM, t.distanceM);
+    const float center = rf.lateralM;
+    const float yaw = rf.yawRad;
+    const float z = -4.7f - rf.forwardM;
+    const float elev = rf.elevationM;
     const float fog = 1.0f - clampf(t.distanceM / 220.0f, 0.0f, 0.82f);
     const float x = t.laneX + center - cameraX;
     const float y = -0.62f + elev * 0.34f;
@@ -326,10 +328,11 @@ void drawRaceOpponent(const nr3ds::RaceTelemetry& race,
     const float relM = race.opponentProgressM - race.playerProgressM;
     if (relM < -4.5f || relM > 195.0f) return;
 
-    const float center = roadCenterRelative(playerWorldM, relM);
-    const float yaw = roadYawRelative(playerWorldM, relM);
-    const float z = -4.7f - relM;
-    const float elev = roadElevationRelative(playerWorldM, relM);
+    const auto rf = gRoute.localFrame(playerWorldM, relM);
+    const float center = rf.lateralM;
+    const float yaw = rf.yawRad;
+    const float z = -4.7f - rf.forwardM;
+    const float elev = rf.elevationM;
     const float fog = 1.0f - clampf(std::max(relM, 0.0f) / 220.0f, 0.0f, 0.82f);
     const float x = race.opponentLaneX + center - cameraX;
     const float y = -0.60f + elev * 0.34f;
@@ -348,10 +351,11 @@ void drawRaceGate(float aheadM, float cameraX, float playerWorldM,
                   bool finishGate, bool countdownGate) {
     if (aheadM < 1.5f || aheadM > 190.0f) return;
 
-    const float center = roadCenterRelative(playerWorldM, aheadM);
-    const float yaw = roadYawRelative(playerWorldM, aheadM);
-    const float z = -4.7f - aheadM;
-    const float elev = roadElevationRelative(playerWorldM, aheadM);
+    const auto rf = gRoute.localFrame(playerWorldM, aheadM);
+    const float center = rf.lateralM;
+    const float yaw = rf.yawRad;
+    const float z = -4.7f - rf.forwardM;
+    const float elev = rf.elevationM;
     const float fog = 1.0f - clampf(aheadM / 220.0f, 0.0f, 0.82f);
     const float roadX = center - cameraX;
     const float gy = elev * 0.34f;
@@ -393,33 +397,41 @@ void drawHighway(const nr3ds::Telemetry& s,
                  bool braking,
                  float routeProgressM) {
     const float segLen = 10.0f;
-    const float scroll = std::fmod(std::max(routeProgressM, 0.0f), segLen);
+    const float baseM = std::floor(std::max(routeProgressM, 0.0f) / segLen) * segLen;
 
     const float worldCarX = clampf(s.posX, -kRoadLimit, kRoadLimit);
     const float cameraX = worldCarX * 0.78f;
     const float carX = worldCarX - cameraX;
     const RoadStyle styleNow = gRoute.styleAt(routeProgressM);
 
-    for (int i = 0; i < 27; ++i) {
-        const float z = -5.6f - float(i) * segLen + scroll;
-        const float aheadM = std::max(0.0f, -z - 4.7f);
-        const float worldM = routeProgressM + aheadM;
+    for (int i = 0; i < 32; ++i) {
+        const float worldM = baseM + float(i) * segLen;
+        if (worldM < 0.0f || worldM > gRoute.totalLengthM()) continue;
+        const float aheadM = worldM - routeProgressM;
+        if (aheadM < -7.0f) continue;
+
         const int chunk = gRoute.chunkIndex(worldM);
         if (!gRoute.chunkActive(chunk, routeProgressM)) continue;
 
         const auto& section = gRoute.sectionAt(worldM);
         const RoadStyle style = section.style;
-        const float center = roadCenterRelative(routeProgressM, aheadM);
-        const float elev = roadElevationRelative(routeProgressM, aheadM) * 0.34f;
-        const float yaw = roadYawRelative(routeProgressM, aheadM);
+        const auto rf = gRoute.localFrame(routeProgressM, aheadM);
+        if (rf.forwardM < -7.0f || rf.forwardM > 285.0f) continue;
+        const float z = -4.7f - rf.forwardM;
+        const float center = rf.lateralM;
+        const float elev = rf.elevationM * 0.34f;
+        const float yaw = rf.yawRad;
         const float roadX = center - cameraX;
         const float roadY = -1.34f + elev;
         const float roadHalf = section.roadWidthM * 0.5f;
-        const float fog = 1.0f - clampf(float(i) / 29.0f, 0.0f, 0.88f);
+        const float fog = 1.0f - clampf(std::max(rf.forwardM, 0.0f) / 285.0f, 0.0f, 0.88f);
 
         float roadR = 0.070f, roadG = 0.078f, roadB = 0.095f;
         float barrierR = 0.28f, barrierG = 0.29f, barrierB = 0.30f;
-        if (style == RoadStyle::SodiumFence) {
+        if (style == RoadStyle::HighLevel) {
+            roadR = 0.062f; roadG = 0.070f; roadB = 0.086f;
+            barrierR = 0.25f; barrierG = 0.26f; barrierB = 0.28f;
+        } else if (style == RoadStyle::SodiumFence) {
             roadR = 0.090f; roadG = 0.075f; roadB = 0.052f;
             barrierR = 0.31f; barrierG = 0.27f; barrierB = 0.20f;
         } else if (style == RoadStyle::Underpass) {
@@ -495,7 +507,26 @@ void drawHighway(const nr3ds::Telemetry& s,
             }
         }
 
-        if (style == RoadStyle::Elevated) {
+        if (style == RoadStyle::HighLevel) {
+            // The recovered source route is explicitly the AREA_2,1 HIGH branch.
+            // Keep the player on an exposed upper deck with close infrastructure
+            // rather than drawing the old temporary overhead-road corridor.
+            if ((i % 4) == 1) {
+                for (int side = -1; side <= 1; side += 2) {
+                    const float sx = roadX + float(side) * (roadHalf + 1.4f);
+                    drawCube(sx, roadY - 2.0f, z, 0.55f, 4.2f, 0.55f, yaw,
+                             0.11f * fog, 0.12f * fog, 0.14f * fog);
+                }
+            }
+            if ((i % 5) == 2) {
+                drawCube(roadX - roadHalf - 4.6f, roadY + 1.2f, z - 3.0f,
+                         5.0f, 5.0f, 6.0f, yaw,
+                         0.025f * fog, 0.035f * fog, 0.060f * fog);
+                drawCube(roadX + roadHalf + 4.8f, roadY + 0.7f, z + 2.0f,
+                         5.5f, 4.0f, 5.5f, yaw,
+                         0.030f * fog, 0.038f * fog, 0.058f * fog);
+            }
+        } else if (style == RoadStyle::Elevated) {
             // Elevated roadway immediately overhead, with regularly spaced piers.
             drawCube(roadX - 1.0f, roadY + 4.20f, z,
                      13.0f, 0.35f, segLen + 0.25f, yaw,
@@ -779,7 +810,7 @@ void drawTireStack(float x, float z, int count) {
 }
 
 void drawGarageScene(const GarageState& garage, float spin) {
-    // v0.011 showroom pass: bright Japanese tuning-shop proportions inspired by
+    // v0.012 showroom pass: bright Japanese tuning-shop proportions inspired by
     // the reference mood, but built from original low-poly geometry and colors.
     const float wallR = 0.36f, wallG = 0.34f, wallB = 0.27f;
 
@@ -880,7 +911,7 @@ void printUpgradeLine(int row, bool selected, const char* name,
 
 void drawGarageHud(const GarageState& garage, int selection, const char* status) {
     const auto cfg = garage.makeVehicleConfig();
-    std::printf("\x1b[1;1HNR TUNING // v0.011 SHOWROOM      \x1b[K");
+    std::printf("\x1b[1;1HNR TUNING // v0.012 SHOWROOM      \x1b[K");
     std::printf("\x1b[2;1H$%-6d   RECORD %dW / %dL            \x1b[K",
                 garage.cash(), garage.wins(), garage.losses());
     std::printf("\x1b[3;1H%.0fNm  +%.0fhp turbo  grip %.2f/%.2f\x1b[K",
@@ -1108,14 +1139,14 @@ int main(int argc, char** argv) {
 
         if (rt.phase == RacePhase::Countdown) {
             const int count = std::max(1, int(std::ceil(rt.countdown)));
-            std::printf("\x1b[1;1HNR3DS v0.011 - MIDNIGHT RUN    \x1b[K");
+            std::printf("\x1b[1;1HNR3DS v0.012 - RECOVERED C1    \x1b[K");
             std::printf("\x1b[5;1HRACE: GET READY  %d          \x1b[K", count);
         } else if (rt.phase == RacePhase::Racing) {
-            std::printf("\x1b[1;1HNR3DS v0.011 - MIDNIGHT RUN    \x1b[K");
+            std::printf("\x1b[1;1HNR3DS v0.012 - RECOVERED C1    \x1b[K");
             std::printf("\x1b[5;1HRACE: GO  CP %d/%d             \x1b[K",
                         rt.checkpointIndex, int(RaceSession::kCheckpointCount));
         } else {
-            std::printf("\x1b[1;1HNR3DS v0.011 - MIDNIGHT RUN    \x1b[K");
+            std::printf("\x1b[1;1HNR3DS v0.012 - RECOVERED C1    \x1b[K");
             std::printf("\x1b[5;1HRESULT: %s                 \x1b[K",
                         rt.playerWon ? "YOU WIN +$1000" : "RIVAL WINS +$300");
             std::printf("\x1b[6;1HY=garage  SELECT=retry          \x1b[K");
@@ -1135,11 +1166,13 @@ int main(int argc, char** argv) {
         std::printf("\x1b[12;1HSteer raw/filt: %5.2f/%5.2f \x1b[K", in.steer, s.steerFiltered);
         std::printf("\x1b[13;1HHits traffic/rival/wall: %d/%d/%d\x1b[K",
                     collisionCount, rivalHitCount, wallHitCount);
+        const auto& currentSection = gRoute.sectionAt(rt.playerProgressM);
         std::printf("\x1b[14;1HZone: %-12s chunks %d-%d\x1b[K",
-                    nr3ds::ExpresswayRoute::styleName(gRoute.styleAt(rt.playerProgressM)),
+                    nr3ds::ExpresswayRoute::styleName(currentSection.style),
                     gRoute.activeChunkFirst(rt.playerProgressM),
                     gRoute.activeChunkLast(rt.playerProgressM));
-        std::printf("\x1b[16;1HCPU: %6.2f%% GPU: %6.2f%%\x1b[K",
+        std::printf("\x1b[15;1HSource: %-18s\x1b[K", currentSection.sourceName);
+        std::printf("\x1b[17;1HCPU: %6.2f%% GPU: %6.2f%%\x1b[K",
                     C3D_GetProcessingTime() * 6.0f,
                     C3D_GetDrawingTime() * 6.0f);
     }

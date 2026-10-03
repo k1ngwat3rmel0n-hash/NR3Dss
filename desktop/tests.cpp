@@ -59,7 +59,7 @@ int main() {
         constexpr float dt = 1.0f / 60.0f;
         // Clear the countdown, then verify a fast player can complete the race.
         for (int i = 0; i < 181; ++i) race.update(0.0f, dt);
-        for (int i = 0; i < 60 * 30 && race.telemetry().phase != RacePhase::Finished; ++i) {
+        for (int i = 0; i < 60 * 45 && race.telemetry().phase != RacePhase::Finished; ++i) {
             race.update(220.0f, dt);
         }
         assert(race.telemetry().phase == RacePhase::Finished);
@@ -100,16 +100,18 @@ int main() {
 
     {
         ExpresswayRoute route;
-        assert(route.totalLengthM() > 1200.0f);
-        assert(route.styleAt(40.0f) == RoadStyle::Open);
-        assert(route.styleAt(170.0f) == RoadStyle::SodiumFence);
-        assert(route.styleAt(700.0f) == RoadStyle::Tunnel);
-        assert(route.styleAt(860.0f) == RoadStyle::Junction);
+        assert(route.totalLengthM() > 2000.0f);
+        assert(route.styleAt(40.0f) == RoadStyle::HighLevel);
+        assert(route.styleAt(1480.0f) == RoadStyle::Junction);
+        assert(route.styleAt(1600.0f) == RoadStyle::Tunnel);
         assert(route.activeChunkFirst(400.0f) <= route.chunkIndex(400.0f));
         assert(route.activeChunkLast(400.0f) >= route.chunkIndex(650.0f));
         const float c0 = route.centerAt(0.0f);
-        const float c1 = route.centerAt(900.0f);
-        assert(std::fabs(c1 - c0) > 0.2f);
+        const float c1 = route.centerAt(1200.0f);
+        assert(std::fabs(c1 - c0) > 100.0f);
+        const auto frame = route.localFrame(900.0f, 120.0f);
+        assert(frame.forwardM > 50.0f);
+        assert(std::fabs(frame.yawRad) < 2.5f);
     }
 
     std::puts("All NR3DS core/race/garage/world tests passed.");

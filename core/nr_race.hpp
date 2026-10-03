@@ -26,10 +26,10 @@ struct RaceTelemetry {
 
 class RaceSession {
 public:
-    static constexpr float kCourseLengthM = 900.0f;
+    static constexpr float kCourseLengthM = 2050.0f;
     static constexpr std::size_t kCheckpointCount = 3;
     static constexpr std::array<float, kCheckpointCount> kCheckpoints{
-        225.0f, 450.0f, 675.0f
+        520.0f, 1040.0f, 1560.0f
     };
 
     void reset();

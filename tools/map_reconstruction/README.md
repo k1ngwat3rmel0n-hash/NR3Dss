@@ -1,22 +1,20 @@
-# Map reconstruction input
+# Map reconstruction status
 
-The NR3DS world renderer is ready for extracted scene transforms, but the raw Unity scenes are required.
+v0.012 now consumes recovered Unity route transforms.
 
-Start by supplying:
+Current converted branch:
 
-1. `NIGHT-RUNNERS PROLOGUE PATREON_Data/globalgamemanagers`
-2. Candidate highway `levelXX` files
-3. Any matching `levelXX.resS`, `sharedassetsXX.assets`, or `.resS` files requested during parsing
+- `WP_AREA_2,1_HIGH_0`
+- first connector portion of `WP_AREA_2,1_R_0`
+- `WP_AREA_2,1_TUNNEL_0`
 
-Desired output from reverse engineering:
+The source chain is resampled to an 8 m fixed-spacing route table in `core/nr_route_data.hpp`.
+`core/nr_world.cpp` interpolates that data and builds a moving local road frame for rendering.
 
-- road centerline / waypoint positions
-- transforms of road chunks
-- ramp/junction connections
-- tunnel starts/ends
-- elevation profile
-- parking-area / garage entrances
-- traffic waypoints
-- major landmark anchors
+Next conversion work:
 
-Those values can then be converted into `core/nr_world.cpp` without changing the 3DS renderer architecture.
+1. Parse selected `sharedassets1.assets` road/tunnel meshes.
+2. Recover mesh vertex/index data and source transform associations.
+3. Decimate/quantize into an Old-3DS-friendly mesh format.
+4. Attach converted meshes to the recovered route/world chunks.
+5. Expand from one branch into the junction-aware C1 graph.

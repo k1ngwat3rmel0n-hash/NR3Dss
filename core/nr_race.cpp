@@ -47,8 +47,8 @@ void RaceSession::update(float playerSpeedKph, float dt) {
     // second full Vehicle simulation on Old 3DS.
     const float gapBefore = t_.opponentProgressM - t_.playerProgressM;
     const float courseT = clampf(t_.opponentProgressM / kCourseLengthM, 0.0f, 1.0f);
-    float desiredKph = 150.0f + 10.0f * courseT - gapBefore * 0.13f;
-    desiredKph = clampf(desiredKph, 138.0f, 178.0f);
+    float desiredKph = 154.0f + 14.0f * courseT - gapBefore * 0.11f;
+    desiredKph = clampf(desiredKph, 142.0f, 184.0f);
 
     // Launch progressively rather than teleporting to cruise speed.
     const float accelKphPerSec = (t_.opponentSpeedKph < 95.0f) ? 22.0f : 12.0f;
@@ -67,7 +67,7 @@ void RaceSession::update(float playerSpeedKph, float dt) {
 
     // Rival lane plan changes at coarse course segments. The movement itself is
     // smoothed so it reads as an intentional lane change instead of a teleport.
-    const int stage = std::min(4, int(t_.opponentProgressM / 175.0f));
+    const int stage = std::min(4, int(t_.opponentProgressM / 410.0f));
     if (stage != laneStage_) {
         static constexpr float kLaneTargets[5] = {2.8f, 0.0f, -2.8f, 0.0f, 2.8f};
         opponentTargetLaneX_ = kLaneTargets[stage];

@@ -1,4 +1,5 @@
 #include "nr_world.hpp"
+#include "nr_route_data.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -7,40 +8,65 @@ namespace nr3ds {
 namespace {
 constexpr float kPi = 3.14159265358979323846f;
 
-inline float clamp01(float v) {
-    return std::max(0.0f, std::min(1.0f, v));
+inline float clampf(float v, float lo, float hi) {
+    return std::max(lo, std::min(v, hi));
 }
 
-inline float smoothstep(float t) {
-    t = clamp01(t);
-    return t * t * (3.0f - 2.0f * t);
+inline float wrapPi(float a) {
+    while (a > kPi) a -= 2.0f * kPi;
+    while (a < -kPi) a += 2.0f * kPi;
+    return a;
 }
 }
 
 ExpresswayRoute::ExpresswayRoute() {
-    // This table is the v0.011 renderer/streaming test route. The structure is
-    // intentionally data-driven so extracted Unity road transforms can replace
-    // these hand-authored values later without rewriting the renderer.
+    // v0.012 is the first route whose CENTERLINE comes from the supplied
+    // NIGHT-RUNNERS Unity data rather than hand-authored curves.
+    //
+    // Source chain used for this first converted branch:
+    //   WP_AREA_2,1_HIGH_0 -> WP_AREA_2,1_R_0 (partial) -> WP_AREA_2,1_TUNNEL_0
+    //
+    // The surrounding visual dressing is still a lightweight NR3DS recreation;
+    // the road path and elevation are recovered source data.
+    constexpr float highEnd = 1445.858f;
+    constexpr float connectorEnd = 1532.124f;
     sections_ = {{
-        {   0.0f, 120.0f, RoadStyle::Open,        0.8f,  1.00f,  0.0f, 11.0f, 3},
-        { 120.0f, 150.0f, RoadStyle::SodiumFence, 4.7f,  0.95f,  0.8f, 10.9f, 3},
-        { 270.0f, 145.0f, RoadStyle::Elevated,    -5.6f, -1.10f,  2.2f, 10.8f, 3},
-        { 415.0f, 140.0f, RoadStyle::DenseCity,    2.9f,  0.80f, -1.2f, 10.8f, 3},
-        { 555.0f, 105.0f, RoadStyle::Underpass,   -1.2f, -0.45f, -0.9f, 10.7f, 3},
-        { 660.0f, 165.0f, RoadStyle::Tunnel,       5.0f,  1.10f,  0.4f, 10.6f, 3},
-        { 825.0f, 155.0f, RoadStyle::Junction,    -5.4f, -0.90f,  1.2f, 10.8f, 3},
-        { 980.0f, 210.0f, RoadStyle::Open,         1.8f,  1.60f, -1.0f, 11.0f, 3},
-        {1190.0f, 250.0f, RoadStyle::SodiumFence,  0.0f, -1.25f,  0.0f, 10.9f, 3},
+        {0.0f, highEnd, RoadStyle::HighLevel, 10.75f, 3, "AREA_2,1_HIGH"},
+        {highEnd, connectorEnd - highEnd, RoadStyle::Junction, 10.55f, 3, "AREA_2,1_R"},
+        {connectorEnd, kRecoveredRouteLengthM - connectorEnd, RoadStyle::Tunnel, 10.45f, 3, "AREA_2,1_TUNNEL"},
     }};
 }
 
 float ExpresswayRoute::totalLengthM() const {
-    const auto& last = sections_.back();
-    return last.startM + last.lengthM;
+    return kRecoveredRouteLengthM;
 }
 
 float ExpresswayRoute::clampWorld(float worldM) const {
-    return std::max(0.0f, std::min(worldM, totalLengthM() - 0.001f));
+    return clampf(worldM, 0.0f, totalLengthM());
+}
+
+void ExpresswayRoute::pointAt(float worldM, float& x, float& y, float& z) const {
+    const float w = clampWorld(worldM);
+    const float regularEndM = float(kRecoveredRouteSampleCount - 2) * kRecoveredRouteStepM;
+    if (w >= regularEndM) {
+        const auto& a = kRecoveredRouteSamples[kRecoveredRouteSampleCount - 2];
+        const auto& b = kRecoveredRouteSamples[kRecoveredRouteSampleCount - 1];
+        const float tail = std::max(kRecoveredRouteLengthM - regularEndM, 0.001f);
+        const float t = clampf((w - regularEndM) / tail, 0.0f, 1.0f);
+        x = a.x + (b.x - a.x) * t;
+        y = a.y + (b.y - a.y) * t;
+        z = a.z + (b.z - a.z) * t;
+        return;
+    }
+
+    const float f = w / kRecoveredRouteStepM;
+    const std::size_t i = static_cast<std::size_t>(f);
+    const float t = f - static_cast<float>(i);
+    const auto& a = kRecoveredRouteSamples[i];
+    const auto& b = kRecoveredRouteSamples[i + 1];
+    x = a.x + (b.x - a.x) * t;
+    y = a.y + (b.y - a.y) * t;
+    z = a.z + (b.z - a.z) * t;
 }
 
 const RoadSection& ExpresswayRoute::sectionAt(float worldM) const {
@@ -55,50 +81,66 @@ RoadStyle ExpresswayRoute::styleAt(float worldM) const {
     return sectionAt(worldM).style;
 }
 
-float ExpresswayRoute::accumulatedLateralBefore(std::size_t sectionIndex) const {
-    float out = 0.0f;
-    for (std::size_t i = 0; i < sectionIndex; ++i) out += sections_[i].lateralDeltaM;
-    return out;
-}
-
-float ExpresswayRoute::accumulatedElevationBefore(std::size_t sectionIndex) const {
-    float out = 0.0f;
-    for (std::size_t i = 0; i < sectionIndex; ++i) out += sections_[i].elevationDeltaM;
-    return out;
-}
-
 float ExpresswayRoute::centerAt(float worldM) const {
-    const float w = clampWorld(worldM);
-    for (std::size_t i = 0; i < sections_.size(); ++i) {
-        const auto& s = sections_[i];
-        if (w < s.startM + s.lengthM || i + 1 == sections_.size()) {
-            const float t = clamp01((w - s.startM) / std::max(s.lengthM, 0.001f));
-            const float base = accumulatedLateralBefore(i);
-            const float transition = s.lateralDeltaM * smoothstep(t);
-            const float localWave = s.waveAmplitudeM * std::sin(kPi * t);
-            return base + transition + localWave;
-        }
-    }
-    return 0.0f;
+    float x, y, z;
+    pointAt(worldM, x, y, z);
+    (void)y; (void)z;
+    return x;
 }
 
 float ExpresswayRoute::elevationAt(float worldM) const {
-    const float w = clampWorld(worldM);
-    for (std::size_t i = 0; i < sections_.size(); ++i) {
-        const auto& s = sections_[i];
-        if (w < s.startM + s.lengthM || i + 1 == sections_.size()) {
-            const float t = clamp01((w - s.startM) / std::max(s.lengthM, 0.001f));
-            return accumulatedElevationBefore(i) + s.elevationDeltaM * smoothstep(t);
-        }
-    }
-    return 0.0f;
+    float x, y, z;
+    pointAt(worldM, x, y, z);
+    (void)x; (void)z;
+    return y;
 }
 
 float ExpresswayRoute::yawAt(float worldM) const {
     constexpr float d = 2.0f;
-    const float a = centerAt(worldM - d);
-    const float b = centerAt(worldM + d);
-    return std::atan2(b - a, 2.0f * d);
+    float ax, ay, az, bx, by, bz;
+    pointAt(clampWorld(worldM - d), ax, ay, az);
+    pointAt(clampWorld(worldM + d), bx, by, bz);
+    (void)ay; (void)by;
+    return std::atan2(bx - ax, bz - az);
+}
+
+RouteLocalFrame ExpresswayRoute::localFrame(float playerWorldM, float aheadM) const {
+    const float pM = clampWorld(playerWorldM);
+    const float qM = clampWorld(playerWorldM + aheadM);
+
+    float px, py, pz, qx, qy, qz;
+    pointAt(pM, px, py, pz);
+    pointAt(qM, qx, qy, qz);
+
+    constexpr float d = 2.0f;
+    float ax, ay, az, bx, by, bz;
+    pointAt(clampWorld(pM - d), ax, ay, az);
+    pointAt(clampWorld(pM + d), bx, by, bz);
+    (void)ay; (void)by;
+
+    float fx = bx - ax;
+    float fz = bz - az;
+    const float mag = std::sqrt(fx * fx + fz * fz);
+    if (mag > 0.0001f) {
+        fx /= mag;
+        fz /= mag;
+    } else {
+        fx = 0.0f;
+        fz = 1.0f;
+    }
+
+    // right = +90 degrees from forward in the x/z plane.
+    const float rx = fz;
+    const float rz = -fx;
+    const float dx = qx - px;
+    const float dz = qz - pz;
+
+    RouteLocalFrame out;
+    out.lateralM = dx * rx + dz * rz;
+    out.forwardM = dx * fx + dz * fz;
+    out.elevationM = qy - py;
+    out.yawRad = wrapPi(yawAt(qM) - yawAt(pM));
+    return out;
 }
 
 int ExpresswayRoute::chunkIndex(float worldM) const {
@@ -123,11 +165,12 @@ const char* ExpresswayRoute::styleName(RoadStyle style) {
     switch (style) {
         case RoadStyle::Open: return "OPEN";
         case RoadStyle::SodiumFence: return "ORANGE FENCE";
-        case RoadStyle::Elevated: return "ELEVATED";
+        case RoadStyle::Elevated: return "OVERHEAD";
         case RoadStyle::DenseCity: return "CITY";
         case RoadStyle::Underpass: return "UNDERPASS";
         case RoadStyle::Tunnel: return "TUNNEL";
         case RoadStyle::Junction: return "JUNCTION";
+        case RoadStyle::HighLevel: return "RECOVERED HIGH";
     }
     return "UNKNOWN";
 }
