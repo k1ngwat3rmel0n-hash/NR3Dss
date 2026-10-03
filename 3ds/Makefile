@@ -7,7 +7,7 @@ endif
 TOPDIR ?= $(CURDIR)
 include $(DEVKITARM)/3ds_rules
 
-TARGET      := nr3ds_v0172
+TARGET      := nr3ds_v0173
 BUILD       := build
 SOURCES     := source ../core
 DATA        :=
@@ -15,8 +15,8 @@ INCLUDES    := ../core
 GRAPHICS    := gfx
 GFXBUILD    := $(BUILD)
 
-APP_TITLE       := NR3DS v0.017.2
-APP_DESCRIPTION := Curved wall spans and Azahar DSP retry hotfix
+APP_TITLE       := NR3DS v0.017.3
+APP_DESCRIPTION := Curved walls plus Azahar CSND audio fallback
 APP_AUTHOR      := NR3DS project
 
 ARCH := -march=armv6k -mtune=mpcore -mfloat-abi=hard -mtp=soft

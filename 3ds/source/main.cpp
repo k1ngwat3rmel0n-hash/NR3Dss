@@ -124,58 +124,35 @@ constexpr int kAudioSamples = kAudioRate * kAudioLoopSeconds;
 s16* gAudioBuffer = nullptr;
 ndspWaveBuf gAudioWave{};
 bool gAudioReady = false;
-bool gAudioEmulatorStub = false;
+bool gAudioUsingCsnd = false;
 Result gAudioInitResult = 0;
+Result gAudioFallbackResult = 0;
 
 
 void audioTestInit() {
-    // NDSP normally requires sdmc:/3ds/dspfirm.cdc. Azahar/Citra HLE accepts
-    // a zero-byte placeholder, while real hardware requires the real dumped
-    // DSP firmware. Never overwrite an existing firmware file.
-    Result rc = ndspInit();
-    gAudioInitResult = rc;
+    // Prefer NDSP on real hardware, but Azahar can expose CSND even when the
+    // homebrew NDSP firmware path is unavailable.  Do not create a fake
+    // dspfirm.cdc: that probe did not help this emulator configuration.
+    Result ndspRc = ndspInit();
+    gAudioInitResult = ndspRc;
 
-    if (R_FAILED(rc)) {
-        FILE* existing = std::fopen("sdmc:/3ds/dspfirm.cdc", "rb");
-        if (existing) {
-            std::fclose(existing);
-        } else {
-            FILE* stub = std::fopen("sdmc:/3ds/dspfirm.cdc", "wb");
-            if (stub) {
-                std::fclose(stub);
-                rc = ndspInit();
-                gAudioInitResult = rc;
-                if (R_SUCCEEDED(rc)) {
-                    gAudioEmulatorStub = true;
-                } else {
-                    // On real hardware a zero-byte DSP image is invalid. Remove
-                    // our temporary probe so the user can later dump the real one.
-                    std::remove("sdmc:/3ds/dspfirm.cdc");
-                }
-            }
-        }
+    bool useNdsp = R_SUCCEEDED(ndspRc);
+    if (!useNdsp) {
+        const Result csndRc = csndInit();
+        gAudioFallbackResult = csndRc;
+        if (R_FAILED(csndRc)) return;
+        gAudioUsingCsnd = true;
     }
-
-    if (R_FAILED(rc)) return;
-
-    ndspSetOutputMode(NDSP_OUTPUT_STEREO);
-    ndspChnReset(0);
-    ndspChnSetInterp(0, NDSP_INTERP_LINEAR);
-    ndspChnSetRate(0, float(kAudioRate));
-    ndspChnSetFormat(0, NDSP_FORMAT_MONO_PCM16);
-    float mix[12]{};
-    mix[0] = 0.23f;
-    mix[1] = 0.23f;
-    ndspChnSetMix(0, mix);
 
     gAudioBuffer = static_cast<s16*>(linearAlloc(kAudioSamples * sizeof(s16)));
     if (!gAudioBuffer) {
-        ndspExit();
+        if (useNdsp) ndspExit();
+        else csndExit();
         return;
     }
 
     // Original four-second late-night synth test: kick/snare/hat + bass/arpeggio.
-    // It exists only to prove the NDSP playback path and is not one of the supplied songs.
+    // It exists only to prove the playback path and is not one of the supplied songs.
     constexpr float pi = 3.14159265358979323846f;
     u32 noise = 0x12345678u;
     for (int i = 0; i < kAudioSamples; ++i) {
@@ -185,30 +162,25 @@ void audioTestInit() {
         const int beatIndex = int(std::floor(beat));
 
         float v = 0.0f;
-        // Side-chain-like bass pulse.
         const float bassEnv = std::exp(-beatFrac * 4.0f);
         const float bassHz = (beatIndex == 2) ? 65.41f : 55.0f;
         v += std::sin(2.0f * pi * bassHz * t) * 0.22f * bassEnv;
 
-        // Kick on beats 0/2.
         if ((beatIndex & 1) == 0 && beatFrac < 0.20f) {
             const float env = std::exp(-beatFrac * 28.0f);
             const float hz = 72.0f - beatFrac * 170.0f;
             v += std::sin(2.0f * pi * hz * t) * 0.34f * env;
         }
 
-        // Snare on beats 1/3, deterministic LFSR noise.
         noise ^= noise << 13; noise ^= noise >> 17; noise ^= noise << 5;
         const float n = (float(noise & 0xFFFFu) / 32767.5f) - 1.0f;
         if ((beatIndex & 1) == 1 && beatFrac < 0.16f)
             v += n * 0.16f * std::exp(-beatFrac * 22.0f);
 
-        // Eighth-note hats.
         const float eighth = std::fmod(t * (160.0f / 60.0f) * 2.0f, 1.0f);
         if (eighth < 0.055f)
             v += n * 0.045f * std::exp(-eighth * 45.0f);
 
-        // Small high arpeggio to make the audio test obviously musical.
         const int step = int(std::floor(t * 8.0f)) & 7;
         static constexpr float notes[8] = {220.0f, 261.63f, 329.63f, 392.0f,
                                            329.63f, 261.63f, 246.94f, 293.66f};
@@ -218,25 +190,67 @@ void audioTestInit() {
         gAudioBuffer[i] = s16(v * 32767.0f);
     }
 
-    std::memset(&gAudioWave, 0, sizeof(gAudioWave));
-    gAudioWave.data_pcm16 = gAudioBuffer;
-    gAudioWave.nsamples = kAudioSamples;
-    gAudioWave.looping = true;
-    DSP_FlushDataCache(gAudioBuffer, kAudioSamples * sizeof(s16));
-    ndspChnWaveBufAdd(0, &gAudioWave);
-    gAudioReady = true;
+    const u32 audioBytes = u32(kAudioSamples * sizeof(s16));
+
+    if (useNdsp) {
+        ndspSetOutputMode(NDSP_OUTPUT_STEREO);
+        ndspChnReset(0);
+        ndspChnSetInterp(0, NDSP_INTERP_LINEAR);
+        ndspChnSetRate(0, float(kAudioRate));
+        ndspChnSetFormat(0, NDSP_FORMAT_MONO_PCM16);
+        float mix[12]{};
+        mix[0] = 0.23f;
+        mix[1] = 0.23f;
+        ndspChnSetMix(0, mix);
+
+        std::memset(&gAudioWave, 0, sizeof(gAudioWave));
+        gAudioWave.data_pcm16 = gAudioBuffer;
+        gAudioWave.nsamples = kAudioSamples;
+        gAudioWave.looping = true;
+        DSP_FlushDataCache(gAudioBuffer, audioBytes);
+        ndspChnWaveBufAdd(0, &gAudioWave);
+        gAudioReady = true;
+        return;
+    }
+
+    // CSND fallback: Azahar implements csnd:SND as an HLE service.  This path
+    // avoids the external dspfirm requirement and is only a compatibility
+    // fallback; NDSP remains the preferred backend on hardware.
+    CSND_FlushDataCache(gAudioBuffer, audioBytes);
+    const Result playRc = csndPlaySound(
+        0,
+        SOUND_ENABLE | SOUND_REPEAT | SOUND_FORMAT_16BIT | SOUND_LINEAR_INTERP,
+        kAudioRate,
+        0.32f,
+        0.0f,
+        gAudioBuffer,
+        gAudioBuffer,
+        audioBytes);
+    gAudioFallbackResult = playRc;
+    if (R_SUCCEEDED(playRc)) {
+        gAudioReady = true;
+    } else {
+        csndExit();
+        gAudioUsingCsnd = false;
+    }
 }
 
 void audioTestExit() {
     if (gAudioReady) {
-        ndspChnWaveBufClear(0);
-        ndspExit();
+        if (gAudioUsingCsnd) {
+            CSND_SetPlayStateR(0, 0);
+            csndExecCmds(true);
+            csndExit();
+        } else {
+            ndspChnWaveBufClear(0);
+            ndspExit();
+        }
         gAudioReady = false;
+    } else if (gAudioUsingCsnd) {
+        csndExit();
     }
-    if (gAudioEmulatorStub) {
-        std::remove("sdmc:/3ds/dspfirm.cdc");
-        gAudioEmulatorStub = false;
-    }
+    gAudioUsingCsnd = false;
+
     if (gAudioBuffer) {
         linearFree(gAudioBuffer);
         gAudioBuffer = nullptr;
@@ -1837,14 +1851,14 @@ int main(int argc, char** argv) {
 
         if (rt.phase == RacePhase::Countdown) {
             const int count = std::max(1, int(std::ceil(rt.countdown)));
-            std::printf("\x1b[1;1HNR3DS v0.017.2 - CURVED WALLS    \x1b[K");
+            std::printf("\x1b[1;1HNR3DS v0.017.3 - AUDIO FALLBACK    \x1b[K");
             std::printf("\x1b[5;1HRACE: GET READY  %d          \x1b[K", count);
         } else if (rt.phase == RacePhase::Racing) {
-            std::printf("\x1b[1;1HNR3DS v0.017.2 - CURVED WALLS    \x1b[K");
+            std::printf("\x1b[1;1HNR3DS v0.017.3 - AUDIO FALLBACK    \x1b[K");
             std::printf("\x1b[5;1HRACE: GO  CP %d/%d             \x1b[K",
                         rt.checkpointIndex, int(RaceSession::kCheckpointCount));
         } else {
-            std::printf("\x1b[1;1HNR3DS v0.017.2 - CURVED WALLS    \x1b[K");
+            std::printf("\x1b[1;1HNR3DS v0.017.3 - AUDIO FALLBACK    \x1b[K");
             std::printf("\x1b[5;1HRESULT: %s                 \x1b[K",
                         rt.playerWon ? "YOU WIN +$1000" : "RIVAL WINS +$300");
             std::printf("\x1b[6;1HY=garage  SELECT=retry          \x1b[K");
@@ -1873,8 +1887,8 @@ int main(int argc, char** argv) {
         std::printf("\x1b[16;1HGeo: source meshes + Livisa\x1b[K");
         std::printf("\x1b[17;1HTex: ROAD2 + TUNNEL GRUNGE      \x1b[K");
         const char* audioLabel = gAudioReady
-            ? (gAudioEmulatorStub ? "NDSP test (Azahar stub)" : "NDSP test loop")
-            : "DSP unavailable - add dspfirm.cdc";
+            ? (gAudioUsingCsnd ? "CSND fallback loop playing" : "NDSP test loop playing")
+            : "audio backend unavailable";
         std::printf("\x1b[18;1HAudio: %-28s\x1b[K", audioLabel);
         std::printf("\x1b[19;1HCPU: %6.2f%% GPU: %6.2f%%\x1b[K",
                     C3D_GetProcessingTime() * 6.0f,

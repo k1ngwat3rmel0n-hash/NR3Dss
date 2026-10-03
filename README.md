@@ -1,32 +1,14 @@
-# NR3DS v0.017.2 — Curved Walls + Audio Retry
+# NR3DS v0.017.3
 
-Hotfix based on the v0.017.1 screenshots.
+Audio compatibility hotfix on top of v0.017.2.
 
-## Wall fix
+- Keeps the endpoint-built curved tunnel/barrier walls.
+- Keeps source road/tunnel textures, Livisa source mesh and long C1 route.
+- Prefers NDSP on hardware.
+- If `ndspInit()` fails (as shown in Azahar), automatically tries the legacy CSND service.
+- No fake/zero-byte `dspfirm.cdc` is created.
+- Bottom-screen HUD reports `CSND fallback loop playing` when the fallback succeeds.
 
-The tunnel/highway wall pieces were being rotated around their own centers. On a bend,
-that leaves the square end cap of one long cuboid visible before the next piece catches
-up, which looked like a beige/black wall pointing straight across the road.
+The audio in this build is still the small original test loop; source NIGHT-RUNNERS soundtrack transcoding is the next audio milestone.
 
-v0.017.2 constructs the main concrete barrier spans from the **actual route endpoints**
-at both ends of each 8 m section. The left/right wall endpoints are individually offset
-using the route tangent, then the visible span is placed between those endpoints. This
-makes neighboring walls meet along the bend instead of only sharing a center yaw.
-
-When the real tunnel texture is available, the old long closed tunnel-wall cuboids are
-also hidden so their end caps cannot appear through the textured wall strips.
-
-## Audio
-
-The screenshot reported `DSP unavailable`; that means `ndspInit()` failed before any
-audio could play. libctru normally expects `sdmc:/3ds/dspfirm.cdc`.
-
-For Azahar/Citra HLE, v0.017.2 now tries a temporary zero-byte `dspfirm.cdc` only when no
-DSP file exists, retries NDSP, and deletes the temporary file on exit. It never overwrites
-an existing DSP firmware file. Real 3DS hardware still requires a real dumped DSP
-firmware file.
-
-This remains the small synthesized playback test. The recovered NIGHT-RUNNERS FSB5
-tracks are catalogued but are not yet decoded/streamed by the 3DS build.
-
-Expected artifact: `nr3ds_v0172.3dsx`.
+Expected artifact: `nr3ds_v0173.3dsx`.
