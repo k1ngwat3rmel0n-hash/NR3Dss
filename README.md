@@ -1,52 +1,63 @@
-# NR3DS v0.012 - recovered C1 route
+# NR3DS v0.013
 
-This milestone replaces the hand-authored v0.011 road curve with the first highway branch reconstructed from the supplied NIGHT-RUNNERS Unity data.
+Source-geometry proxy milestone for the Old 3DS NIGHT-RUNNERS-style demake/reimplementation.
 
 ## What is new
 
-- First source-derived road centerline/elevation data in-game.
-- Converted branch is built from the recovered waypoint chain:
-  - `WP_AREA_2,1_HIGH_0`
-  - `WP_AREA_2,1_R_0` (connector portion)
-  - `WP_AREA_2,1_TUNNEL_0`
-- About 2.09 km of recovered route geometry represented by 263 uniformly spaced samples.
-- Full 2D bends are rendered in the player's moving road frame instead of reducing the map to a sine-wave road.
-- Source elevation is preserved and scaled for the handheld presentation.
-- 80 m chunk streaming remains active.
-- Race extended to 2050 m so the test run traverses the recovered upper route, connector and tunnel branch.
-- Bottom screen shows the current recovered source section.
-- v0.010 garage, v0.011 visual treatment, high-speed steering, traffic, collisions and tuning remain intact.
+- Keeps the recovered ~2.09 km C1 branch introduced in v0.012.
+- Adds a source-geometry profiling layer based on meshes extracted from the supplied `sharedassets1.assets` file.
+- Replaces the plain high-level road edges with denser source-inspired fence modules.
+- Adds repeated support/piers derived from the `AREA_2_SUPPORTS2` mesh family.
+- Reworks the tunnel into a ribbed shell with wall modules, ceiling ribs, fluorescent strips and utility recesses.
+- Adds a small distant Tatsumi-source proxy cluster using the proportions/style of the supplied Tatsumi building, vending and fence meshes.
+- Keeps the v0.012 recovered centerline, elevation, traffic, rival, physics, steering, garage and upgrade systems intact.
+- Adds reproducible source mesh profile data under `tools/source_geometry_extraction/`.
 
-## Important fidelity distinction
+## What "source-derived" means in v0.013
 
-The **route path and elevation** in this build come from recovered Unity waypoint data. The surrounding buildings, barriers, lamps, tunnel shell and lighting are still lightweight NR3DS geometry. Original source meshes can be converted later now that asset use has been authorized, but this build deliberately validates the recovered map coordinate pipeline first.
+The original PC meshes are **not** copied wholesale into the 3DS renderer yet. v0.013 reads/measures selected Unity mesh metadata and turns those measurements into aggressively simplified cuboid proxies suitable for an Old 3DS.
+
+Selected source families include:
+
+- `AREA_TATSUMI_R ROAD_LOD0.004`
+- `AREA1_BIG_ROAD_2`
+- `_TATSUMI_MESH FENCE0_LOD0` / FENCE1 / FENCE2
+- `AREA_2_SUPPORTS2.001` / `.002`
+- `AREA_TATSUMI_BUILDING LOD0`
+- `AREA_TATSUMI_VENDING_LOD0`
+
+The actual `AREA_2,1` and `AREA_TUNNEL_2,1` render meshes live in other additive Unity scene asset files. Those can be converted section-by-section once their matching `levelXX` / `sharedassetsXX.assets` files are available.
 
 ## Controls
 
 ### Garage
 - D-pad Up/Down: select item
-- A: buy upgrade
-- D-pad Left/Right: tune gearing
-- Circle Pad Left/Right: rotate display car
-- Y: start expressway run
+- A: buy selected upgrade
+- D-pad Left/Right: adjust gearing
+- Circle Pad: rotate display car
+- Y: start expressway race
 - START: exit
 
-### Highway
+### Race
 - Circle Pad: steer
 - A: throttle
 - B: brake
 - X: handbrake
 - L/R: shift down/up
-- SELECT: retry
-- Y after result: garage
+- SELECT: retry race
+- Y after finish: garage
 - START: exit
 
 ## Build
 
-Use the included GitHub Actions workflow or `make` inside `3ds/` with devkitPro `3ds-dev`.
+Use the included GitHub Actions workflow or run `make` in `3ds/` with devkitPro `3ds-dev` installed.
 
 Expected output:
 
 ```text
-nr3ds_v012.3dsx
+nr3ds_v013.3dsx
 ```
+
+## Validation
+
+The portable physics, race, garage, recovered-world and source-profile tests pass on the desktop harness. The 3DS frontend also passes the local C++ syntax check used for this project. GitHub Actions remains the final devkitARM build check.

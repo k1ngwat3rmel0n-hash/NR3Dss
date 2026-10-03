@@ -1,29 +1,33 @@
 # NR3DS roadmap
 
-## Stable baseline through v0.012
+## Stable baseline through v0.013
 
-- Native Citro3D Old-3DS renderer
-- High-speed precision steering and wall sliding
-- Traffic / rival / race loop
-- Garage, economy and tuning
-- Chunked expressway renderer
-- Recovered Unity scene/route parsing
-- First ~2.09 km source-derived C1 route branch running in-game
+- Native Citro3D renderer targeting Old 3DS
+- Reconstructed NIGHT-RUNNERS-style vehicle physics core
+- High-speed steering precision and wall-slide behavior
+- Traffic and rival AI
+- Garage, cash, upgrades and gearing
+- Race loop
+- Recovered Unity C1 waypoint network
+- ~2.09 km source-derived route branch
+- 80 m streaming/chunk window
+- Source mesh metadata extraction
+- Source-inspired road, fence, support and tunnel proxy geometry
 
-## Next: v0.013
+## Next conversion milestone
 
-- Convert selected original road/tunnel/barrier meshes from `sharedassets1.assets` into a lightweight NR3DS mesh format.
-- Add triangle decimation and vertex-color/baked-light conversion.
-- Attach converted meshes to recovered world transforms.
-- Expand route graph beyond the first AREA_2,1 branch.
-- Start junction-aware route selection rather than one fixed branch.
+- Obtain the additive scene/assets for `AREA_2,1` and `AREA_TUNNEL_2,1`.
+- Parse their MeshFilter -> Mesh associations and exact scene transforms.
+- Convert selected road/tunnel meshes to an NR3DS vertex/index format.
+- Decimate and quantize geometry for PICA200.
+- Generate near/mid/far LOD variants.
+- Replace proxy modules with section-specific converted meshes where performance permits.
 
-## Following milestones
+## After that
 
-- Tatsumi/parking-area reconstruction and rival encounter flow.
-- Full C1 route graph streaming.
-- Original signs/props/textures selectively downsampled/atlased for 3DS memory.
-- Free-roam rival challenges and SP/gap-style highway battles.
-- Persistent save/progression.
-- Audio and atmosphere pass.
-- Physical Old 3DS profiling and LOD tuning.
+- Expand the reconstructed C1 graph beyond the first branch.
+- Restore junction-aware route choices.
+- Convert PA/rest-area geometry and connect it to free-roam rival encounters.
+- Add persistent saves and rival progression.
+- Add audio, tunnel reverb-style effects and stronger analog/VHS presentation.
+- Validate performance on physical Old 3DS hardware.

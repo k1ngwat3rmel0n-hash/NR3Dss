@@ -5,7 +5,7 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-add_library(nr3ds_core ../core/nr_physics.cpp ../core/nr_race.cpp ../core/nr_garage.cpp ../core/nr_world.cpp)
+add_library(nr3ds_core ../core/nr_physics.cpp ../core/nr_race.cpp ../core/nr_garage.cpp ../core/nr_world.cpp ../core/nr_source_geometry.cpp)
 target_include_directories(nr3ds_core PUBLIC ../core)
 if (MSVC)
     target_compile_options(nr3ds_core PRIVATE /W4 /O2)

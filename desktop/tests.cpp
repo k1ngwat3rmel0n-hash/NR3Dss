@@ -2,6 +2,7 @@
 #include "nr_race.hpp"
 #include "nr_garage.hpp"
 #include "nr_world.hpp"
+#include "nr_source_geometry.hpp"
 
 #include <cassert>
 #include <cmath>

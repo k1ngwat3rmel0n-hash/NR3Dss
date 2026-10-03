@@ -11,6 +11,7 @@
 #include "nr_race.hpp"
 #include "nr_garage.hpp"
 #include "nr_world.hpp"
+#include "nr_source_geometry.hpp"
 
 using nr3ds::InputState;
 using nr3ds::Vehicle;
@@ -19,6 +20,7 @@ using nr3ds::RacePhase;
 using nr3ds::GarageState;
 using nr3ds::UpgradeKind;
 using nr3ds::RoadStyle;
+using nr3ds::SourceProxyKind;
 
 namespace {
 
@@ -390,6 +392,135 @@ bool resolveOpponentCollision(Vehicle& car, RaceSession& race, float& cooldown) 
     return false;
 }
 
+
+void drawSourceFence(float roadX, float roadY, float z, float yaw,
+                     float roadHalf, float fog, bool orange) {
+    const auto& profile = nr3ds::sourceGeometryProfile(SourceProxyKind::Fence);
+    (void)profile;
+    const float postR = orange ? 0.52f : 0.24f;
+    const float postG = orange ? 0.22f : 0.25f;
+    const float postB = orange ? 0.045f : 0.27f;
+
+    // Proxy proportions are derived from _TATSUMI_MESH FENCE0_LOD0. Rather
+    // than drawing the original high-poly fence, render a concrete toe, posts,
+    // top rail and two thin mesh strips. It reads as the same type of roadside
+    // structure at 400x240 for a tiny fraction of the geometry cost.
+    for (int side = -1; side <= 1; side += 2) {
+        const float x = roadX + float(side) * (roadHalf + 0.36f);
+        drawCube(x, roadY + 0.48f, z,
+                 0.18f, 0.72f, 10.1f, yaw,
+                 0.27f * fog, 0.27f * fog, 0.27f * fog);
+        drawCube(x, roadY + 1.56f, z,
+                 0.07f, 1.48f, 0.07f, yaw,
+                 postR * fog, postG * fog, postB * fog);
+        drawCube(x, roadY + 2.27f, z,
+                 0.07f, 0.07f, 10.0f, yaw,
+                 postR * fog, postG * fog, postB * fog);
+        drawCube(x, roadY + 1.58f, z,
+                 0.035f, 1.25f, 9.65f, yaw,
+                 (orange ? 0.26f : 0.13f) * fog,
+                 (orange ? 0.12f : 0.15f) * fog,
+                 (orange ? 0.035f : 0.17f) * fog);
+    }
+}
+
+void drawSourceSupport(float roadX, float roadY, float z, float yaw,
+                       float roadHalf, float fog, int variant) {
+    const auto& profile = nr3ds::sourceGeometryProfile(SourceProxyKind::Support);
+    (void)profile;
+    const float pierOffset = roadHalf + 1.85f;
+    const float h = (variant & 1) ? 4.7f : 5.4f;
+
+    // Reduced proxy of AREA_2_SUPPORTS2.001/.002: twin piers, cap beam and a
+    // darker under-deck. The original source meshes are enormous spans; this
+    // version repeats a short module that streams cheaply.
+    drawCube(roadX - pierOffset, roadY + h * 0.45f, z,
+             0.72f, h, 0.82f, yaw,
+             0.17f * fog, 0.18f * fog, 0.19f * fog);
+    drawCube(roadX + pierOffset, roadY + h * 0.45f, z,
+             0.72f, h, 0.82f, yaw,
+             0.17f * fog, 0.18f * fog, 0.19f * fog);
+    drawCube(roadX, roadY + h - 0.12f, z,
+             roadHalf * 2.0f + 5.0f, 0.52f, 1.05f, yaw,
+             0.19f * fog, 0.20f * fog, 0.21f * fog);
+    drawCube(roadX, roadY + h + 0.23f, z,
+             roadHalf * 2.0f + 5.6f, 0.18f, 2.0f, yaw,
+             0.10f * fog, 0.11f * fog, 0.12f * fog);
+}
+
+void drawSourceTunnelModule(float roadX, float roadY, float z, float yaw,
+                            float roadHalf, float fog, int segmentIndex) {
+    // The actual AREA_TUNNEL_2,1 mesh lives in a different additive Unity
+    // scene than the files currently supplied, so v0.013 preserves the exact
+    // recovered centerline while using a low-poly shell informed by the source
+    // road/fence proportions and the provided tunnel footage.
+    const float wallX = roadHalf + 0.46f;
+    drawCube(roadX - wallX, roadY + 1.58f, z,
+             0.72f, 3.50f, 10.15f, yaw,
+             0.50f * fog, 0.43f * fog, 0.23f * fog);
+    drawCube(roadX + wallX, roadY + 1.58f, z,
+             0.72f, 3.50f, 10.15f, yaw,
+             0.50f * fog, 0.43f * fog, 0.23f * fog);
+    drawCube(roadX, roadY + 3.53f, z,
+             roadHalf * 2.0f + 1.45f, 0.32f, 10.2f, yaw,
+             0.39f * fog, 0.36f * fog, 0.25f * fog);
+
+    // Ribbing is one of the strongest tunnel depth cues in the original.
+    if ((segmentIndex & 1) == 0) {
+        drawCube(roadX - wallX + 0.18f, roadY + 1.72f, z,
+                 0.10f, 3.35f, 0.12f, yaw,
+                 0.70f * fog, 0.60f * fog, 0.34f * fog);
+        drawCube(roadX + wallX - 0.18f, roadY + 1.72f, z,
+                 0.10f, 3.35f, 0.12f, yaw,
+                 0.70f * fog, 0.60f * fog, 0.34f * fog);
+        drawCube(roadX, roadY + 3.35f, z,
+                 roadHalf * 2.0f + 0.65f, 0.10f, 0.14f, yaw,
+                 0.74f * fog, 0.68f * fog, 0.46f * fog);
+        drawCube(roadX - 2.65f, roadY + 3.27f, z,
+                 2.10f, 0.075f, 0.32f, yaw,
+                 1.0f * fog, 0.94f * fog, 0.70f * fog);
+        drawCube(roadX + 2.65f, roadY + 3.27f, z,
+                 2.10f, 0.075f, 0.32f, yaw,
+                 1.0f * fog, 0.94f * fog, 0.70f * fog);
+    }
+
+    // Recessed emergency/utility boxes break up the otherwise flat walls.
+    if ((segmentIndex % 6) == 3) {
+        drawCube(roadX - wallX + 0.55f, roadY + 0.92f, z - 1.0f,
+                 0.11f, 1.25f, 1.15f, yaw,
+                 0.15f * fog, 0.19f * fog, 0.16f * fog);
+        drawCube(roadX - wallX + 0.50f, roadY + 1.02f, z - 1.0f,
+                 0.03f, 0.44f, 0.40f, yaw,
+                 0.72f * fog, 0.15f * fog, 0.055f * fog);
+    }
+}
+
+void drawTatsumiSourceProxyCluster(float roadX, float roadY, float z,
+                                   float yaw, float fog) {
+    const auto& building = nr3ds::sourceGeometryProfile(SourceProxyKind::TatsumiBuilding);
+    const auto& vending = nr3ds::sourceGeometryProfile(SourceProxyKind::Vending);
+    (void)building; (void)vending;
+
+    // A tiny source-asset landmark cluster derived from AREA_TATSUMI_BUILDING
+    // LOD0, AREA_TATSUMI_VENDING_LOD0 and the Tatsumi fence set. This is used as
+    // distant dressing only; it is not claiming that the current AREA_2,1 route
+    // physically contains Tatsumi PA.
+    drawCube(roadX + 10.8f, roadY + 3.2f, z - 5.0f,
+             8.5f, 6.5f, 8.0f, yaw,
+             0.055f * fog, 0.060f * fog, 0.066f * fog);
+    drawCube(roadX + 7.2f, roadY + 0.95f, z - 0.8f,
+             0.85f, 1.95f, 0.72f, yaw,
+             0.58f * fog, 0.12f * fog, 0.08f * fog);
+    drawCube(roadX + 7.2f, roadY + 1.05f, z - 1.18f,
+             0.56f, 0.55f, 0.04f, yaw,
+             0.82f * fog, 0.77f * fog, 0.58f * fog);
+    for (int j = 0; j < 3; ++j) {
+        drawCube(roadX + 13.3f + float(j) * 0.75f, roadY + 0.48f, z + 2.8f,
+                 0.62f, 0.95f, 0.62f, yaw,
+                 0.020f * fog, 0.021f * fog, 0.024f * fog);
+    }
+}
+
 void drawHighway(const nr3ds::Telemetry& s,
                  const std::array<TrafficCar, kTrafficCount>& traffic,
                  const nr3ds::RaceTelemetry& race,
@@ -478,6 +609,25 @@ void drawHighway(const nr3ds::Telemetry& s,
                      (tunnel ? 0.12f : 0.045f) * fog);
         }
 
+        // Source-geometry proxy pass. These details are scaled from the original
+        // Unity road/fence/support mesh families, then reduced to cuboids so they
+        // remain viable on Old 3DS.
+        if (style == RoadStyle::HighLevel || style == RoadStyle::Junction) {
+            if ((i & 1) == 0) {
+                drawSourceFence(roadX, roadY, z, yaw, roadHalf, fog,
+                                style == RoadStyle::Junction);
+            }
+            if ((i % 6) == 2) {
+                drawSourceSupport(roadX, roadY, z, yaw, roadHalf, fog, i / 6);
+            }
+        }
+        if (style == RoadStyle::Tunnel) {
+            drawSourceTunnelModule(roadX, roadY, z, yaw, roadHalf, fog, i);
+        }
+        if (style == RoadStyle::Junction && (i % 12) == 7) {
+            drawTatsumiSourceProxyCluster(roadX, roadY, z, yaw, fog);
+        }
+
         // Orange mesh/fence corridor from the highway reference footage.
         if (style == RoadStyle::SodiumFence) {
             if ((i & 1) == 0) {
@@ -551,8 +701,8 @@ void drawHighway(const nr3ds::Telemetry& s,
                          2.0f, 0.08f, 0.30f, yaw,
                          0.78f * fog, 0.72f * fog, 0.50f * fog);
             }
-        } else if (style == RoadStyle::Tunnel) {
-            // Bright yellow/cream tunnel walls and ceiling from the reference.
+        } else if (false && style == RoadStyle::Tunnel) {
+            // Superseded by source-derived tunnel proxy above.
             drawCube(roadX - roadHalf - 0.55f, roadY + 1.65f, z,
                      0.85f, 3.7f, segLen + 0.20f, yaw,
                      0.58f * fog, 0.48f * fog, 0.24f * fog);
@@ -1139,14 +1289,14 @@ int main(int argc, char** argv) {
 
         if (rt.phase == RacePhase::Countdown) {
             const int count = std::max(1, int(std::ceil(rt.countdown)));
-            std::printf("\x1b[1;1HNR3DS v0.012 - RECOVERED C1    \x1b[K");
+            std::printf("\x1b[1;1HNR3DS v0.013 - SOURCE GEO C1    \x1b[K");
             std::printf("\x1b[5;1HRACE: GET READY  %d          \x1b[K", count);
         } else if (rt.phase == RacePhase::Racing) {
-            std::printf("\x1b[1;1HNR3DS v0.012 - RECOVERED C1    \x1b[K");
+            std::printf("\x1b[1;1HNR3DS v0.013 - SOURCE GEO C1    \x1b[K");
             std::printf("\x1b[5;1HRACE: GO  CP %d/%d             \x1b[K",
                         rt.checkpointIndex, int(RaceSession::kCheckpointCount));
         } else {
-            std::printf("\x1b[1;1HNR3DS v0.012 - RECOVERED C1    \x1b[K");
+            std::printf("\x1b[1;1HNR3DS v0.013 - SOURCE GEO C1    \x1b[K");
             std::printf("\x1b[5;1HRESULT: %s                 \x1b[K",
                         rt.playerWon ? "YOU WIN +$1000" : "RIVAL WINS +$300");
             std::printf("\x1b[6;1HY=garage  SELECT=retry          \x1b[K");
@@ -1172,7 +1322,8 @@ int main(int argc, char** argv) {
                     gRoute.activeChunkFirst(rt.playerProgressM),
                     gRoute.activeChunkLast(rt.playerProgressM));
         std::printf("\x1b[15;1HSource: %-18s\x1b[K", currentSection.sourceName);
-        std::printf("\x1b[17;1HCPU: %6.2f%% GPU: %6.2f%%\x1b[K",
+        std::printf("\x1b[16;1HGeo: source proxy + recovered path\x1b[K");
+        std::printf("\x1b[18;1HCPU: %6.2f%% GPU: %6.2f%%\x1b[K",
                     C3D_GetProcessingTime() * 6.0f,
                     C3D_GetDrawingTime() * 6.0f);
     }
