@@ -1,17 +1,17 @@
-# Reverse-engineering / fidelity notes - v0.010
+# Reverse-engineering / fidelity notes - v0.011
 
-The portable vehicle core is intentionally unchanged from the stable v0.009 driving baseline. It continues to preserve selected behavior reconstructed from the supplied IL2CPP NIGHT-RUNNERS build: engine torque flow, turbo-spool trends, engine heat/health effects, tire-temperature/grip behavior, handbrake grip transition and speed-sensitive steering behavior.
+The portable physics core still preserves selected behavior reconstructed from the supplied IL2CPP NIGHT-RUNNERS build: engine torque flow, turbo-spool trends, heat/health effects, tire-temperature/grip behavior, handbrake grip transition and speed-sensitive steering behavior.
 
-v0.010 is primarily a presentation milestone. The tuning-shop scene is original NR3DS geometry designed to evoke the same broad Japanese aftermarket/showroom atmosphere as the user's visual references while staying suitable for Old 3DS hardware. No NIGHT-RUNNERS meshes, textures or logos are included.
+v0.011 adds a **data-driven route representation** intended to receive reconstructed Unity scene data later. The current `RoadSection` values are not claimed to be exact NIGHT-RUNNERS coordinates. They are an original temporary route using the user's highway reference footage for visual direction.
 
-Garage rendering remains geometry-only for now. The scene uses simple cuboids, fixed vertex colors and intentionally limited draw complexity. Future milestones can introduce small texture atlases after the basic scene composition and hardware performance are proven.
+The world format stores section start/length, style, lateral displacement, local bend amplitude, elevation change, road width and lane count. Rendering only considers a small chunk window around the player, providing the basis for a much larger road network without keeping the entire city active at once.
 
-Current garage upgrade effects remain:
+Current route styles are: Open, SodiumFence, Elevated, DenseCity, Underpass, Tunnel and Junction.
 
-- Engine: +30 Nm base torque per level, plus strength/cooling headroom.
-- Turbo: +25 hp maximum forced-induction contribution per level.
-- Tires: +0.045 front/rear grip scalar per level.
-- Final drive: user adjustable 3.20-5.00.
-- Gear ratios: individually adjustable while maintaining descending ratio order.
+## What is still needed for accurate map reconstruction
 
-The exact serialized Unity AnimationCurve keyframes are still not imported, so the portable torque/turbo/tire curves remain approximations.
+The current available source material confirms that the Unity build contains many `level0..level86` scene files, but the raw scene bytes themselves are not available in the current working set. The file tree alone cannot supply Transform values.
+
+The minimum useful next upload is `globalgamemanagers`, followed by whichever `levelXX` files correspond to the highway. Matching resource files may also be required depending on serialization references.
+
+No original NIGHT-RUNNERS meshes, textures or logos are distributed in NR3DS.

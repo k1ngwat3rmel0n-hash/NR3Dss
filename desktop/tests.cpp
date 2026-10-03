@@ -1,6 +1,7 @@
 #include "nr_physics.hpp"
 #include "nr_race.hpp"
 #include "nr_garage.hpp"
+#include "nr_world.hpp"
 
 #include <cassert>
 #include <cmath>
@@ -96,6 +97,21 @@ int main() {
         assert(garage.gearRatio(0) >= oldFirst);
     }
 
-    std::puts("All NR3DS core/race/garage tests passed.");
+
+    {
+        ExpresswayRoute route;
+        assert(route.totalLengthM() > 1200.0f);
+        assert(route.styleAt(40.0f) == RoadStyle::Open);
+        assert(route.styleAt(170.0f) == RoadStyle::SodiumFence);
+        assert(route.styleAt(700.0f) == RoadStyle::Tunnel);
+        assert(route.styleAt(860.0f) == RoadStyle::Junction);
+        assert(route.activeChunkFirst(400.0f) <= route.chunkIndex(400.0f));
+        assert(route.activeChunkLast(400.0f) >= route.chunkIndex(650.0f));
+        const float c0 = route.centerAt(0.0f);
+        const float c1 = route.centerAt(900.0f);
+        assert(std::fabs(c1 - c0) > 0.2f);
+    }
+
+    std::puts("All NR3DS core/race/garage/world tests passed.");
     return 0;
 }

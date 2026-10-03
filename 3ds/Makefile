@@ -7,14 +7,14 @@ endif
 TOPDIR ?= $(CURDIR)
 include $(DEVKITARM)/3ds_rules
 
-TARGET      := nr3ds_v010
+TARGET      := nr3ds_v011
 BUILD       := build
 SOURCES     := source ../core
 DATA        :=
 INCLUDES    := ../core
 
-APP_TITLE       := NR3DS v0.010
-APP_DESCRIPTION := Japanese tuning-shop showroom visual overhaul
+APP_TITLE       := NR3DS v0.011
+APP_DESCRIPTION := Midnight expressway chunk-streaming visual overhaul
 APP_AUTHOR      := NR3DS project
 
 ARCH := -march=armv6k -mtune=mpcore -mfloat-abi=hard -mtp=soft

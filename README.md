@@ -1,49 +1,70 @@
-# NR3DS v0.010
+# NR3DS v0.011
 
-Garage/showroom visual-overhaul milestone for the Old 3DS NIGHT-RUNNERS-style demake/reimplementation.
+Midnight-expressway renderer and world-streaming foundation for the Old 3DS NIGHT-RUNNERS-style demake/reimplementation.
 
 ## What is new
 
-- Rebuilt the garage into a bright Japanese tuning-shop/showroom scene.
-- Added ceiling panels, fluorescent lights, parts shelves, product boxes, banners, tire stacks, a vending-machine silhouette, tool chest and a branded back-wall color band.
-- Replaced the very simple garage car with a more detailed low-poly coupe silhouette made entirely from native cuboids.
-- Added headlights, bumpers, skirts, dark glass, wheel hubs, a plate and an upgrade-visible intercooler accent.
-- The garage car now slowly rotates on the display mat; the Circle Pad can rotate the display faster in either direction.
-- Redesigned the bottom-screen garage HUD so parts, transmission settings and controls are grouped more cleanly.
-- Keeps the v0.009 economy, upgrades, gearing, race, rival, traffic, steering and wall-slide systems unchanged.
+- Data-driven expressway route format in `core/nr_world.*`.
+- 80 m world chunks with a small active window around the player.
+- Distinct visual highway zones instead of one endlessly repeating road:
+  - open expressway
+  - orange/sodium fence corridor
+  - elevated roadway
+  - dense city section
+  - underpass
+  - bright yellow/cream tunnel
+  - junction/exit section
+- Lower, closer chase-camera framing.
+- Stronger speed sensation from close roadside geometry and cheap high-speed streaks.
+- Narrower roadway proportions and brighter lane markings.
+- Section-specific fake lighting and sky/clear colors.
+- Basic elevation changes in the road renderer.
+- Traffic, rival, checkpoints and race gates now follow the route center/elevation.
+- Bottom-screen debug line shows the current zone and active chunk range.
+- Keeps the v0.010 garage, tuning, economy, handling, precision steering and wall-slide behavior.
 
-## Garage controls
+## Important map note
 
+v0.011 is the **streaming/rendering foundation**, not the promised 1:1 reconstructed NIGHT-RUNNERS map yet. The route table in `nr_world.cpp` is a temporary original test route built from the visual references the user supplied.
+
+To reconstruct the original road topology accurately, the next reverse-engineering step needs the raw Unity scene data from the PC build, starting with:
+
+- `NIGHT-RUNNERS PROLOGUE PATREON_Data/globalgamemanagers`
+- the highway scene `levelXX` file(s)
+- matching `.resS` / `sharedassetsXX.assets` files if referenced by those scenes
+
+The current conversation/library contains the file-tree listing and code/metadata artifacts, but not the raw `levelXX` scene bytes needed to recover GameObject transforms.
+
+## Controls
+
+### Garage
 - D-pad Up/Down: select item
-- A: buy selected Engine/Turbo/Tires upgrade
-- D-pad Left/Right: adjust final drive or selected gear ratio
-- Circle Pad Left/Right: rotate showroom car
+- A: buy upgrade
+- D-pad Left/Right: tune final drive/gears
+- Circle Pad Left/Right: rotate display car
 - Y: start expressway race
 - START: exit
 
-## Race controls
-
+### Expressway
 - Circle Pad: steer
 - A: throttle
 - B: brake
 - X: handbrake
 - L/R: shift down/up
-- SELECT: retry race
+- SELECT: retry
 - Y after finish: return to garage
 - START: exit
 
 ## Build
 
-Use the included GitHub Actions workflow, or run `make` from `3ds/` with devkitPro `3ds-dev` installed.
+Use the included GitHub Actions workflow or run `make` from `3ds/` with devkitPro `3ds-dev` installed.
 
 Expected output:
 
 ```text
-nr3ds_v010.3dsx
+nr3ds_v011.3dsx
 ```
 
-## Visual direction
+## Verification
 
-The new garage is an original low-poly interpretation of the Japanese tuning-shop atmosphere shown in the user's references. It does not reuse NIGHT-RUNNERS textures, meshes, logos or other copyrighted assets. The goal is to establish the same kind of mood while remaining practical for Old 3DS hardware.
-
-The next planned milestone is the highway presentation overhaul: tighter Tokyo-expressway proportions, tunnels, overhead signs, denser roadside detail and stronger speed sensation.
+The desktop physics/race/garage/world test suite passes. The 3DS `main.cpp` also passes a local C++ syntax check against Citro3D/libctru-compatible stubs; the real 3DS build should still be validated through the existing devkitPro GitHub Actions workflow.
