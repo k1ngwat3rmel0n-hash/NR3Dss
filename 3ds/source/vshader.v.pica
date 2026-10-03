@@ -1,4 +1,4 @@
-; NR3DS v0.009 - simple vertex-color 3D shader
+; NR3DS v0.017 - vertex color + optional UV passthrough
 
 .fvec projection[4], modelView[4]
 
@@ -7,9 +7,11 @@
 
 .out outpos position
 .out outclr color
+.out outtc0 texcoord0
 
 .alias inpos v0
 .alias inclr v1
+.alias intex v2
 
 .proc main
     mov r0.xyz, inpos
@@ -26,5 +28,6 @@
     dp4 outpos.w, projection[3], r1
 
     mov outclr, inclr
+    mov outtc0, intex
     end
 .end

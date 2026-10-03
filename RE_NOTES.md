@@ -1,32 +1,41 @@
-# Reverse-engineering / conversion notes — v0.016
+# Reverse-engineering / conversion notes — v0.017
 
-## Complete sharedassets set
+## Texture decode milestone
 
-The four user-supplied `gpt1.7z` … `gpt4.7z` archives were unpacked successfully and collectively contain every `sharedassetsN.assets` file from 0 through 86 plus the available `.resS`/`.resource` companions.
+The complete sharedassets set made it possible to resolve Texture2D objects to streamed
+`.resS` payloads directly. For this pass:
 
-A Unity 2018.4.26f1 SerializedFile parser was used to index object tables without requiring UnityPy/AssetRipper. Across all 87 sharedassets files the current catalog contains 53,372 serialized objects, including 5,210 Mesh, 337 Material and 1,892 Texture2D objects.
+- `sharedassets1.assets`, Texture2D path 190: `_generic_ROAD_2_ALB`,
+  2048x2048, Unity DXT1.
+- `sharedassets2.assets`, Texture2D path 187: `generic_TUNNEL_GRUNGE_ALB 1`,
+  2048x2048, Unity DXT5.
 
-## Mesh decode
+The Unity 2018 Texture2D serialized layout was parsed manually. Streamed payload offsets and
+sizes were used to extract the BC-compressed mip data from `.resS`; Pillow's BCn decoder was
+used for offline verification.
 
-For uncompressed static road meshes, the converter decodes:
+## 3DS conversion
 
-- submesh table
-- 16/32-bit index buffers
-- VertexData channel descriptors
-- interleaved Float32 position channel
+The first 3DS pass intentionally does not carry the full PC atlases. Repeat-friendly source
+surface regions are cropped and resized to 128x128. Brightness is reduced for the night scene,
+then `tex3ds` converts the PNGs to ETC1/T3X at build time.
 
-The source road meshes in this pass generally use stream 0 with position/normal/tangent/color/UV channels. v0.016 expands indexed triangles offline so the current 3DS renderer can continue using `C3D_DrawArrays(GPU_TRIANGLES, ...)`.
+The PICA shader now passes a second UV varying. Color-only geometry uses fixed UV attribute 2;
+textured geometry streams position + UV while keeping vertex color as a fixed fog/tint factor.
+The texture combiner uses `GPU_TEXTURE0 * GPU_PRIMARY_COLOR`.
 
-## Road-local normalization
+This keeps all existing cuboid/source-mesh rendering intact and makes texture support an
+incremental layer rather than a renderer rewrite.
 
-The source PC meshes are authored in local XY with Z as vertical, but different scene families are rotated differently before their Unity Transform is applied. The v0.016 converter therefore chooses the longer source XY extent as the forward axis and the shorter one as lateral, then normalizes lateral half-width to 1.0. This lets each mesh family reuse the existing recovered-route frame.
+## Why source-mesh road UVs are not enabled yet
 
-This is not yet exact per-instance Unity scene placement. Exact scene MeshFilter/Transform reconstruction is being developed separately; v0.016 is the intermediate atlas step that provides substantially more authentic geometry while retaining the stable route renderer.
+The source road meshes already contain UV channels, but the v0.016 atlas converter currently
+normalizes only positions and expands triangles. Reconstructing the original MeshFilter instance
+transform plus UV stream is the next step. Until then the source asphalt is mapped on stable
+road-local quads over the procedural collision deck.
 
-## Source atlas
+## Preserved v0.016.1 fixes
 
-See `tools/source_geometry_extraction/v016_source_atlas_manifest.json` for exact sharedassets/path IDs and raw bounds.
-
-## Textures
-
-Texture2D names/path IDs are now catalogued across the complete sharedassets set. Texture payload decoding, format conversion, UV retention and PICA200 texture upload are intentionally deferred rather than pretending fixed colors are original textures.
+Roadside lateral offsets continue to rotate with recovered-route yaw, visual segment spacing stays
+at 8 m, and the bad free-standing LowRoad/Junction/Open stamping remains disabled until exact
+Unity scene transforms are reconstructed.

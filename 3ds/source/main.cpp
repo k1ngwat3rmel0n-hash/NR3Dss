@@ -1,5 +1,6 @@
 #include <3ds.h>
 #include <citro3d.h>
+#include <tex3ds.h>
 #include <cstdio>
 #include <cmath>
 #include <cstring>
@@ -7,6 +8,8 @@
 #include <algorithm>
 
 #include "vshader_shbin.h"
+#include "nr_road_source_t3x.h"
+#include "nr_tunnel_source_t3x.h"
 #include "nr_physics.hpp"
 #include "nr_race.hpp"
 #include "nr_garage.hpp"
@@ -41,6 +44,7 @@ constexpr float kRoadLimit = 4.90f;
 enum class GameMode { Garage, Race };
 
 struct Vertex { float x, y, z; };
+struct TexVertex { float x, y, z, u, v; };
 
 struct TrafficCar {
     int laneIndex;
@@ -68,6 +72,24 @@ static const Vertex kCube[kCubeVerts] = {
     { 0.5f,-0.5f, 0.5f}, {-0.5f,-0.5f, 0.5f}, {-0.5f,-0.5f,-0.5f},
 };
 
+static const TexVertex kRoadTextureQuad[6] = {
+    {-0.5f, 0.0f, -0.5f, 0.0f, 0.0f},
+    { 0.5f, 0.0f, -0.5f, 1.0f, 0.0f},
+    { 0.5f, 0.0f,  0.5f, 1.0f, 1.0f},
+    { 0.5f, 0.0f,  0.5f, 1.0f, 1.0f},
+    {-0.5f, 0.0f,  0.5f, 0.0f, 1.0f},
+    {-0.5f, 0.0f, -0.5f, 0.0f, 0.0f},
+};
+
+static const TexVertex kWallTextureQuad[6] = {
+    {0.0f, -0.5f, -0.5f, 0.0f, 1.0f},
+    {0.0f,  0.5f, -0.5f, 0.0f, 0.0f},
+    {0.0f,  0.5f,  0.5f, 1.0f, 0.0f},
+    {0.0f,  0.5f,  0.5f, 1.0f, 0.0f},
+    {0.0f, -0.5f,  0.5f, 1.0f, 1.0f},
+    {0.0f, -0.5f, -0.5f, 0.0f, 1.0f},
+};
+
 DVLB_s* gShaderDvlb = nullptr;
 shaderProgram_s gProgram{};
 int gLocProjection = -1;
@@ -84,6 +106,12 @@ void* gAtlasTunnelRoofVbo = nullptr;
 void* gAtlasRoadLinesVbo = nullptr;
 void* gAtlasSupportVbo = nullptr;
 void* gAtlasOpenRoadVbo = nullptr;
+void* gRoadTextureVbo = nullptr;
+void* gWallTextureVbo = nullptr;
+C3D_Tex gRoadTexture{};
+C3D_Tex gTunnelTexture{};
+bool gRoadTextureReady = false;
+bool gTunnelTextureReady = false;
 nr3ds::ExpresswayRoute gRoute;
 
 
@@ -195,6 +223,19 @@ float laneXFor(int laneIndex) {
     return float(laneIndex - 1) * kLaneWidth;
 }
 
+// Convert road-local lateral/forward offsets into the player camera frame.
+// v0.016 positioned barriers/props with X-only offsets, so on bends their
+// centers did not rotate around the curved road. That made walls cut straight
+// across corners even though each piece had the correct yaw.
+void roadLocalOffset(float roadX, float roadZ, float yaw,
+                     float lateralM, float forwardM,
+                     float& outX, float& outZ) {
+    const float c = std::cos(yaw);
+    const float sn = std::sin(yaw);
+    outX = roadX + lateralM * c + forwardM * sn;
+    outZ = roadZ - lateralM * sn + forwardM * c;
+}
+
 float roadCenterRelative(float playerWorldM, float aheadM) {
     return gRoute.centerAt(playerWorldM + aheadM) - gRoute.centerAt(playerWorldM);
 }
@@ -245,6 +286,65 @@ void bindPositionVbo(void* vbo, int stride) {
     BufInfo_Add(bufInfo, vbo, stride, 1, 0x0);
 }
 
+void setupColorPipeline() {
+    C3D_BindProgram(&gProgram);
+
+    C3D_AttrInfo* attrInfo = C3D_GetAttrInfo();
+    AttrInfo_Init(attrInfo);
+    AttrInfo_AddLoader(attrInfo, 0, GPU_FLOAT, 3); // v0 = position
+    AttrInfo_AddFixed(attrInfo, 1);                // v1 = color
+    AttrInfo_AddFixed(attrInfo, 2);                // v2 = unused UV
+    C3D_FixedAttribSet(2, 0.0f, 0.0f, 0.0f, 0.0f);
+
+    bindPositionVbo(gVbo, sizeof(Vertex));
+
+    setupColorPipeline();
+}
+
+void setupTexturedPipeline(void* vbo, C3D_Tex* texture) {
+    C3D_BindProgram(&gProgram);
+
+    C3D_AttrInfo* attrInfo = C3D_GetAttrInfo();
+    AttrInfo_Init(attrInfo);
+    AttrInfo_AddLoader(attrInfo, 0, GPU_FLOAT, 3); // v0 = position
+    AttrInfo_AddFixed(attrInfo, 1);                // v1 = fog/tint
+    AttrInfo_AddLoader(attrInfo, 2, GPU_FLOAT, 2); // v2 = UV
+
+    C3D_BufInfo* bufInfo = C3D_GetBufInfo();
+    BufInfo_Init(bufInfo);
+    // Two streamed attributes: v0 then v2.
+    BufInfo_Add(bufInfo, vbo, sizeof(TexVertex), 2, 0x20);
+
+    C3D_TexBind(0, texture);
+    C3D_TexEnv* env = C3D_GetTexEnv(0);
+    C3D_TexEnvInit(env);
+    C3D_TexEnvSrc(env, C3D_Both,
+                  GPU_TEXTURE0, GPU_PRIMARY_COLOR, GPU_PRIMARY_COLOR);
+    C3D_TexEnvFunc(env, C3D_Both, GPU_MODULATE);
+}
+
+bool loadTextureFromMem(C3D_Tex* tex, const void* data, size_t size) {
+    Tex3DS_Texture t3x = Tex3DS_TextureImport(data, size, tex, nullptr, false);
+    if (!t3x) return false;
+    Tex3DS_TextureFree(t3x);
+    C3D_TexSetFilter(tex, GPU_LINEAR, GPU_LINEAR);
+    C3D_TexSetWrap(tex, GPU_REPEAT, GPU_REPEAT);
+    return true;
+}
+
+void drawTexturedQuad(float x, float y, float z,
+                      float sx, float sy, float sz,
+                      float yaw, float tint) {
+    C3D_Mtx modelView;
+    Mtx_Identity(&modelView);
+    Mtx_Translate(&modelView, x, y, z, true);
+    Mtx_RotateY(&modelView, yaw, true);
+    Mtx_Scale(&modelView, sx, sy, sz);
+    C3D_FVUnifMtx4x4(GPU_VERTEX_SHADER, gLocModelView, &modelView);
+    setColor(tint, tint, tint, 1.0f);
+    C3D_DrawArrays(GPU_TRIANGLES, 0, 6);
+}
+
 void drawSourceTriangles(void* vbo, int vertexCount,
                          float x, float y, float z,
                          float sx, float sy, float sz,
@@ -277,10 +377,19 @@ void sceneInit() {
     AttrInfo_Init(attrInfo);
     AttrInfo_AddLoader(attrInfo, 0, GPU_FLOAT, 3);
     AttrInfo_AddFixed(attrInfo, 1);
+    AttrInfo_AddFixed(attrInfo, 2);
+    C3D_FixedAttribSet(2, 0.0f, 0.0f, 0.0f, 0.0f);
     setColor(1, 1, 1, 1);
 
     gVbo = linearAlloc(sizeof(kCube));
     std::memcpy(gVbo, kCube, sizeof(kCube));
+
+    gRoadTextureVbo = linearAlloc(sizeof(kRoadTextureQuad));
+    if (gRoadTextureVbo)
+        std::memcpy(gRoadTextureVbo, kRoadTextureQuad, sizeof(kRoadTextureQuad));
+    gWallTextureVbo = linearAlloc(sizeof(kWallTextureQuad));
+    if (gWallTextureVbo)
+        std::memcpy(gWallTextureVbo, kWallTextureQuad, sizeof(kWallTextureQuad));
 
     gSourceRoadVbo = linearAlloc(sizeof(kSourceRoadVerts));
     if (gSourceRoadVbo)
@@ -309,6 +418,13 @@ void sceneInit() {
     gAtlasOpenRoadVbo = linearAlloc(sizeof(kAtlasOpenRoadVerts));
     if (gAtlasOpenRoadVbo) std::memcpy(gAtlasOpenRoadVbo, kAtlasOpenRoadVerts, sizeof(kAtlasOpenRoadVerts));
 
+    // v0.017: actual NIGHT-RUNNERS albedo crops, converted by tex3ds to tiny
+    // ETC1 textures at build time.
+    gRoadTextureReady = loadTextureFromMem(
+        &gRoadTexture, nr_road_source_t3x, nr_road_source_t3x_size);
+    gTunnelTextureReady = loadTextureFromMem(
+        &gTunnelTexture, nr_tunnel_source_t3x, nr_tunnel_source_t3x_size);
+
     bindPositionVbo(gVbo, sizeof(Vertex));
 
     C3D_DepthTest(true, GPU_GREATER, GPU_WRITE_ALL);
@@ -322,6 +438,10 @@ void sceneInit() {
 }
 
 void sceneExit() {
+    if (gRoadTextureReady) C3D_TexDelete(&gRoadTexture);
+    if (gTunnelTextureReady) C3D_TexDelete(&gTunnelTexture);
+    if (gWallTextureVbo) linearFree(gWallTextureVbo);
+    if (gRoadTextureVbo) linearFree(gRoadTextureVbo);
     if (gAtlasOpenRoadVbo) linearFree(gAtlasOpenRoadVbo);
     if (gAtlasSupportVbo) linearFree(gAtlasSupportVbo);
     if (gAtlasRoadLinesVbo) linearFree(gAtlasRoadLinesVbo);
@@ -481,17 +601,18 @@ void drawTrafficCar(const TrafficCar& t, float cameraX, float playerWorldM) {
     const float z = -4.7f - rf.forwardM;
     const float elev = rf.elevationM;
     const float fog = 1.0f - clampf(t.distanceM / 220.0f, 0.0f, 0.82f);
-    const float x = t.laneX + center - cameraX;
+    float x = 0.0f, laneZ = 0.0f;
+    roadLocalOffset(center - cameraX, z, yaw, t.laneX, 0.0f, x, laneZ);
     const float y = -0.62f + elev * 0.34f;
 
-    drawCube(x, y, z, 1.45f, 0.38f, 2.85f, yaw,
+    drawCube(x, y, laneZ, 1.45f, 0.38f, 2.85f, yaw,
              t.r * fog, t.g * fog, t.b * fog);
-    drawCube(x, y + 0.37f, z - 0.12f, 1.08f, 0.30f, 1.25f, yaw,
+    drawCube(x, y + 0.37f, laneZ - 0.12f, 1.08f, 0.30f, 1.25f, yaw,
              0.05f * fog, 0.08f * fog, 0.11f * fog);
 
-    drawCube(x - 0.44f, y + 0.15f, z + 1.47f, 0.20f, 0.10f, 0.06f, yaw,
+    drawCube(x - 0.44f * std::cos(yaw), y + 0.15f, laneZ + 1.47f, 0.20f, 0.10f, 0.06f, yaw,
              1.0f * fog, 0.02f * fog, 0.01f * fog);
-    drawCube(x + 0.44f, y + 0.15f, z + 1.47f, 0.20f, 0.10f, 0.06f, yaw,
+    drawCube(x + 0.44f * std::cos(yaw), y + 0.15f, laneZ + 1.47f, 0.20f, 0.10f, 0.06f, yaw,
              1.0f * fog, 0.02f * fog, 0.01f * fog);
 }
 
@@ -507,16 +628,17 @@ void drawRaceOpponent(const nr3ds::RaceTelemetry& race,
     const float z = -4.7f - rf.forwardM;
     const float elev = rf.elevationM;
     const float fog = 1.0f - clampf(std::max(relM, 0.0f) / 220.0f, 0.0f, 0.82f);
-    const float x = race.opponentLaneX + center - cameraX;
+    float x = 0.0f, laneZ = 0.0f;
+    roadLocalOffset(center - cameraX, z, yaw, race.opponentLaneX, 0.0f, x, laneZ);
     const float y = -0.60f + elev * 0.34f;
 
-    drawCube(x, y, z, 1.52f, 0.40f, 3.00f, yaw,
+    drawCube(x, y, laneZ, 1.52f, 0.40f, 3.00f, yaw,
              0.78f * fog, 0.26f * fog, 0.055f * fog);
-    drawCube(x, y + 0.38f, z - 0.15f, 1.08f, 0.31f, 1.30f, yaw,
+    drawCube(x, y + 0.38f, laneZ - 0.15f, 1.08f, 0.31f, 1.30f, yaw,
              0.055f * fog, 0.075f * fog, 0.095f * fog);
-    drawCube(x - 0.46f, y + 0.15f, z + 1.55f, 0.21f, 0.10f, 0.06f, yaw,
+    drawCube(x - 0.46f * std::cos(yaw), y + 0.15f, laneZ + 1.55f, 0.21f, 0.10f, 0.06f, yaw,
              1.0f * fog, 0.03f * fog, 0.01f * fog);
-    drawCube(x + 0.46f, y + 0.15f, z + 1.55f, 0.21f, 0.10f, 0.06f, yaw,
+    drawCube(x + 0.46f * std::cos(yaw), y + 0.15f, laneZ + 1.55f, 0.21f, 0.10f, 0.06f, yaw,
              1.0f * fog, 0.03f * fog, 0.01f * fog);
 }
 
@@ -572,23 +694,20 @@ void drawSourceFence(float roadX, float roadY, float z, float yaw,
     const float postG = orange ? 0.22f : 0.25f;
     const float postB = orange ? 0.045f : 0.27f;
 
-    // Proxy proportions are derived from _TATSUMI_MESH FENCE0_LOD0. Rather
-    // than drawing the original high-poly fence, render a concrete toe, posts,
-    // top rail and two thin mesh strips. It reads as the same type of roadside
-    // structure at 400x240 for a tiny fraction of the geometry cost.
     for (int side = -1; side <= 1; side += 2) {
-        const float x = roadX + float(side) * (roadHalf + 0.36f);
-        drawCube(x, roadY + 0.48f, z,
-                 0.18f, 0.72f, 10.1f, yaw,
+        float x = 0.0f, sideZ = 0.0f;
+        roadLocalOffset(roadX, z, yaw, float(side) * (roadHalf + 0.36f), 0.0f, x, sideZ);
+        drawCube(x, roadY + 0.48f, sideZ,
+                 0.18f, 0.72f, 8.05f, yaw,
                  0.27f * fog, 0.27f * fog, 0.27f * fog);
-        drawCube(x, roadY + 1.56f, z,
+        drawCube(x, roadY + 1.56f, sideZ,
                  0.07f, 1.48f, 0.07f, yaw,
                  postR * fog, postG * fog, postB * fog);
-        drawCube(x, roadY + 2.27f, z,
-                 0.07f, 0.07f, 10.0f, yaw,
+        drawCube(x, roadY + 2.27f, sideZ,
+                 0.07f, 0.07f, 8.0f, yaw,
                  postR * fog, postG * fog, postB * fog);
-        drawCube(x, roadY + 1.58f, z,
-                 0.035f, 1.25f, 9.65f, yaw,
+        drawCube(x, roadY + 1.58f, sideZ,
+                 0.035f, 1.25f, 7.70f, yaw,
                  (orange ? 0.26f : 0.13f) * fog,
                  (orange ? 0.12f : 0.15f) * fog,
                  (orange ? 0.035f : 0.17f) * fog);
@@ -615,10 +734,13 @@ void drawSourceSupport(float roadX, float roadY, float z, float yaw,
     // Reduced proxy of AREA_2_SUPPORTS2.001/.002: twin piers, cap beam and a
     // darker under-deck. The original source meshes are enormous spans; this
     // version repeats a short module that streams cheaply.
-    drawCube(roadX - pierOffset, roadY + h * 0.45f, z,
+    float leftX = 0.0f, leftZ = 0.0f, rightX = 0.0f, rightZ = 0.0f;
+    roadLocalOffset(roadX, z, yaw, -pierOffset, 0.0f, leftX, leftZ);
+    roadLocalOffset(roadX, z, yaw,  pierOffset, 0.0f, rightX, rightZ);
+    drawCube(leftX, roadY + h * 0.45f, leftZ,
              0.72f, h, 0.82f, yaw,
              0.17f * fog, 0.18f * fog, 0.19f * fog);
-    drawCube(roadX + pierOffset, roadY + h * 0.45f, z,
+    drawCube(rightX, roadY + h * 0.45f, rightZ,
              0.72f, h, 0.82f, yaw,
              0.17f * fog, 0.18f * fog, 0.19f * fog);
     drawCube(roadX, roadY + h - 0.12f, z,
@@ -636,14 +758,17 @@ void drawSourceTunnelModule(float roadX, float roadY, float z, float yaw,
     // recovered centerline while using a low-poly shell informed by the source
     // road/fence proportions and the provided tunnel footage.
     const float wallX = roadHalf + 0.46f;
-    drawCube(roadX - wallX, roadY + 1.58f, z,
-             0.72f, 3.50f, 10.15f, yaw,
+    float leftWallX = 0.0f, leftWallZ = 0.0f, rightWallX = 0.0f, rightWallZ = 0.0f;
+    roadLocalOffset(roadX, z, yaw, -wallX, 0.0f, leftWallX, leftWallZ);
+    roadLocalOffset(roadX, z, yaw,  wallX, 0.0f, rightWallX, rightWallZ);
+    drawCube(leftWallX, roadY + 1.58f, leftWallZ,
+             0.72f, 3.50f, 8.15f, yaw,
              0.50f * fog, 0.43f * fog, 0.23f * fog);
-    drawCube(roadX + wallX, roadY + 1.58f, z,
-             0.72f, 3.50f, 10.15f, yaw,
+    drawCube(rightWallX, roadY + 1.58f, rightWallZ,
+             0.72f, 3.50f, 8.15f, yaw,
              0.50f * fog, 0.43f * fog, 0.23f * fog);
     drawCube(roadX, roadY + 3.53f, z,
-             roadHalf * 2.0f + 1.45f, 0.32f, 10.2f, yaw,
+             roadHalf * 2.0f + 1.45f, 0.32f, 8.2f, yaw,
              0.39f * fog, 0.36f * fog, 0.25f * fog);
 
     // v0.016 uses a second tunnel family recovered from sharedassets19,
@@ -658,10 +783,10 @@ void drawSourceTunnelModule(float roadX, float roadY, float z, float yaw,
 
     // Ribbing is one of the strongest tunnel depth cues in the original.
     if ((segmentIndex & 1) == 0) {
-        drawCube(roadX - wallX + 0.18f, roadY + 1.72f, z,
+        drawCube(leftWallX + 0.18f * std::cos(yaw), roadY + 1.72f, leftWallZ,
                  0.10f, 3.35f, 0.12f, yaw,
                  0.70f * fog, 0.60f * fog, 0.34f * fog);
-        drawCube(roadX + wallX - 0.18f, roadY + 1.72f, z,
+        drawCube(rightWallX - 0.18f * std::cos(yaw), roadY + 1.72f, rightWallZ,
                  0.10f, 3.35f, 0.12f, yaw,
                  0.70f * fog, 0.60f * fog, 0.34f * fog);
         drawCube(roadX, roadY + 3.35f, z,
@@ -677,10 +802,10 @@ void drawSourceTunnelModule(float roadX, float roadY, float z, float yaw,
 
     // Recessed emergency/utility boxes break up the otherwise flat walls.
     if ((segmentIndex % 6) == 3) {
-        drawCube(roadX - wallX + 0.55f, roadY + 0.92f, z - 1.0f,
+        drawCube(leftWallX + 0.55f * std::cos(yaw), roadY + 0.92f, leftWallZ - 1.0f,
                  0.11f, 1.25f, 1.15f, yaw,
                  0.15f * fog, 0.19f * fog, 0.16f * fog);
-        drawCube(roadX - wallX + 0.50f, roadY + 1.02f, z - 1.0f,
+        drawCube(leftWallX + 0.50f * std::cos(yaw), roadY + 1.02f, leftWallZ - 1.0f,
                  0.03f, 0.44f, 0.40f, yaw,
                  0.72f * fog, 0.15f * fog, 0.055f * fog);
     }
@@ -712,13 +837,131 @@ void drawTatsumiSourceProxyCluster(float roadX, float roadY, float z,
     }
 }
 
+
+void drawSourceTexturePass(float routeProgressM, float cameraX) {
+    if ((!gRoadTextureReady && !gTunnelTextureReady) ||
+        (!gRoadTextureVbo && !gWallTextureVbo)) {
+        return;
+    }
+
+    constexpr float segLen = 8.0f;
+    const int firstSeg = std::max(
+        0, int(std::floor(std::max(routeProgressM, 0.0f) / segLen)) - 1);
+
+    // First pass: source asphalt on the whole visible road. The underlying
+    // procedural deck is retained for collision and fallback rendering.
+    if (gRoadTextureReady && gRoadTextureVbo) {
+        setupTexturedPipeline(gRoadTextureVbo, &gRoadTexture);
+        for (int i = 0; i < 40; ++i) {
+            const int segId = firstSeg + i;
+            const float worldM = float(segId) * segLen;
+            if (worldM < 0.0f || worldM > gRoute.totalLengthM()) continue;
+            if (!gRoute.chunkActive(gRoute.chunkIndex(worldM), routeProgressM)) continue;
+
+            const float aheadM = worldM - routeProgressM;
+            const auto rf = gRoute.localFrame(routeProgressM, aheadM);
+            if (rf.forwardM < -12.0f || rf.forwardM > 300.0f) continue;
+
+            const auto& section = gRoute.sectionAt(worldM);
+            const float z = -4.7f - rf.forwardM;
+            const float roadX = rf.lateralM - cameraX;
+            const float roadY = -1.34f + rf.elevationM * 0.34f;
+            const float yaw = rf.yawRad;
+            const float baseFog =
+                1.0f - clampf(std::max(rf.forwardM, 0.0f) / 300.0f, 0.0f, 0.90f);
+            const float horizonFade =
+                clampf((300.0f - rf.forwardM) / 32.0f, 0.0f, 1.0f);
+            const float fog = baseFog * horizonFade;
+            if (fog <= 0.003f) continue;
+
+            // Just above the procedural deck top surface. This is deliberately
+            // a simple road-local quad for the first texture pass; source-mesh
+            // UV preservation follows once exact scene transforms are applied.
+            drawTexturedQuad(roadX, roadY + 0.066f, z,
+                             section.roadWidthM - 0.10f, 1.0f, segLen + 0.16f,
+                             yaw, fog);
+        }
+    }
+
+    // Second pass: source tunnel concrete on both inner walls and ceiling.
+    if (gTunnelTextureReady && gWallTextureVbo) {
+        setupTexturedPipeline(gWallTextureVbo, &gTunnelTexture);
+        for (int i = 0; i < 40; ++i) {
+            const int segId = firstSeg + i;
+            const float worldM = float(segId) * segLen;
+            if (worldM < 0.0f || worldM > gRoute.totalLengthM()) continue;
+            if (!gRoute.chunkActive(gRoute.chunkIndex(worldM), routeProgressM)) continue;
+
+            const auto& section = gRoute.sectionAt(worldM);
+            if (section.style != RoadStyle::Tunnel) continue;
+
+            const float aheadM = worldM - routeProgressM;
+            const auto rf = gRoute.localFrame(routeProgressM, aheadM);
+            if (rf.forwardM < -12.0f || rf.forwardM > 300.0f) continue;
+
+            const float z = -4.7f - rf.forwardM;
+            const float roadX = rf.lateralM - cameraX;
+            const float roadY = -1.34f + rf.elevationM * 0.34f;
+            const float yaw = rf.yawRad;
+            const float roadHalf = section.roadWidthM * 0.5f;
+            const float baseFog =
+                1.0f - clampf(std::max(rf.forwardM, 0.0f) / 300.0f, 0.0f, 0.90f);
+            const float horizonFade =
+                clampf((300.0f - rf.forwardM) / 32.0f, 0.0f, 1.0f);
+            const float fog = baseFog * horizonFade;
+            if (fog <= 0.003f) continue;
+
+            float lx = 0.0f, lz = 0.0f, rx = 0.0f, rz = 0.0f;
+            roadLocalOffset(roadX, z, yaw, -(roadHalf + 0.075f), 0.0f, lx, lz);
+            roadLocalOffset(roadX, z, yaw,  (roadHalf + 0.075f), 0.0f, rx, rz);
+            drawTexturedQuad(lx, roadY + 1.60f, lz,
+                             1.0f, 3.30f, segLen + 0.18f, yaw, fog);
+            drawTexturedQuad(rx, roadY + 1.60f, rz,
+                             1.0f, 3.30f, segLen + 0.18f, yaw, fog);
+        }
+
+        // Ceiling uses the horizontal quad and the same real tunnel-concrete
+        // texture. Keep it just below the procedural roof so it remains visible.
+        if (gRoadTextureVbo) {
+            setupTexturedPipeline(gRoadTextureVbo, &gTunnelTexture);
+            for (int i = 0; i < 40; ++i) {
+                const int segId = firstSeg + i;
+                const float worldM = float(segId) * segLen;
+                if (worldM < 0.0f || worldM > gRoute.totalLengthM()) continue;
+                if (!gRoute.chunkActive(gRoute.chunkIndex(worldM), routeProgressM)) continue;
+                const auto& section = gRoute.sectionAt(worldM);
+                if (section.style != RoadStyle::Tunnel) continue;
+                const auto rf = gRoute.localFrame(routeProgressM, worldM - routeProgressM);
+                if (rf.forwardM < -12.0f || rf.forwardM > 300.0f) continue;
+
+                const float z = -4.7f - rf.forwardM;
+                const float roadX = rf.lateralM - cameraX;
+                const float roadY = -1.34f + rf.elevationM * 0.34f;
+                const float baseFog =
+                    1.0f - clampf(std::max(rf.forwardM, 0.0f) / 300.0f, 0.0f, 0.90f);
+                const float horizonFade =
+                    clampf((300.0f - rf.forwardM) / 32.0f, 0.0f, 1.0f);
+                const float fog = baseFog * horizonFade;
+                if (fog <= 0.003f) continue;
+
+                drawTexturedQuad(roadX, roadY + 3.355f, z,
+                                 section.roadWidthM + 1.15f, 1.0f, segLen + 0.18f,
+                                 rf.yawRad, fog * 0.88f);
+            }
+        }
+    }
+
+    setupColorPipeline();
+    C3D_FVUnifMtx4x4(GPU_VERTEX_SHADER, gLocProjection, &gProjection);
+}
+
 void drawHighway(const nr3ds::Telemetry& s,
                  const std::array<TrafficCar, kTrafficCount>& traffic,
                  const nr3ds::RaceTelemetry& race,
                  float nextGateM,
                  bool braking,
                  float routeProgressM) {
-    const float segLen = 10.0f;
+    const float segLen = 8.0f;
     // IMPORTANT: segment identity is absolute. v0.013 regenerated all prop
     // patterns from loop index 0 whenever baseM crossed a 10 m boundary. That
     // made lamps, lane dashes, supports and tunnel ribs visibly "reset" at
@@ -730,7 +973,11 @@ void drawHighway(const nr3ds::Telemetry& s,
     const float carX = worldCarX - cameraX;
     const RoadStyle styleNow = gRoute.styleAt(routeProgressM);
 
-    for (int i = 0; i < 36; ++i) {
+    // v0.017 first real source-texture pass. It runs once before the existing
+    // color/proxy geometry, then restores the color pipeline.
+    drawSourceTexturePass(routeProgressM, cameraX);
+
+    for (int i = 0; i < 40; ++i) {
         const int segId = firstSeg + i;
         const float worldM = float(segId) * segLen;
         if (worldM < 0.0f || worldM > gRoute.totalLengthM()) continue;
@@ -778,38 +1025,29 @@ void drawHighway(const nr3ds::Telemetry& s,
         // paint and close roadside geometry are deliberate reference-driven changes.
         drawCube(roadX, roadY, z, section.roadWidthM, 0.12f, segLen + 0.30f, yaw,
                  roadR * fog, roadG * fog, roadB * fog);
-        drawCube(roadX - roadHalf - 0.16f, roadY + 0.58f, z,
-                 0.22f, 0.72f, segLen, yaw,
+        float leftBarrierX = 0.0f, leftBarrierZ = 0.0f;
+        float rightBarrierX = 0.0f, rightBarrierZ = 0.0f;
+        roadLocalOffset(roadX, z, yaw, -(roadHalf + 0.16f), 0.0f, leftBarrierX, leftBarrierZ);
+        roadLocalOffset(roadX, z, yaw,  (roadHalf + 0.16f), 0.0f, rightBarrierX, rightBarrierZ);
+        drawCube(leftBarrierX, roadY + 0.58f, leftBarrierZ,
+                 0.22f, 0.72f, segLen + 0.12f, yaw,
                  barrierR * fog, barrierG * fog, barrierB * fog);
-        drawCube(roadX + roadHalf + 0.16f, roadY + 0.58f, z,
-                 0.22f, 0.72f, segLen, yaw,
+        drawCube(rightBarrierX, roadY + 0.58f, rightBarrierZ,
+                 0.22f, 0.72f, segLen + 0.12f, yaw,
                  barrierR * fog, barrierG * fog, barrierB * fog);
 
         // v0.016 source atlas: different recovered LOD families are selected
         // by road context instead of stamping one AREA_2 mesh across the entire map.
         // The procedural deck remains underneath as collision/visual insurance.
         const float sourceScale = roadHalf * 0.96f;
-        if (style == RoadStyle::HighLevel && (segId % 2) == 0) {
-            drawSourceTriangles(gAtlasHighRoadVbo, kAtlasHighRoadVertsCount,
-                                roadX, roadY + 0.075f, z,
-                                sourceScale, sourceScale, sourceScale * 2.35f, yaw,
-                                roadR * 1.20f * fog, roadG * 1.20f * fog, roadB * 1.16f * fog);
-        } else if (style == RoadStyle::Underpass && (segId % 3) == 0) {
-            drawSourceTriangles(gAtlasLowRoadVbo, kAtlasLowRoadVertsCount,
-                                roadX, roadY + 0.075f, z,
-                                sourceScale, sourceScale, sourceScale * 1.35f, yaw,
-                                roadR * 1.17f * fog, roadG * 1.17f * fog, roadB * 1.15f * fog);
-        } else if (style == RoadStyle::Junction && (segId % 5) == 0) {
-            drawSourceTriangles(gAtlasJunctionRoadVbo, kAtlasJunctionRoadVertsCount,
-                                roadX, roadY + 0.075f, z,
-                                sourceScale, sourceScale, sourceScale * 1.05f, yaw,
-                                roadR * 1.19f * fog, roadG * 1.19f * fog, roadB * 1.15f * fog);
-        } else if (style == RoadStyle::Open && (segId % 5) == 0) {
-            drawSourceTriangles(gAtlasOpenRoadVbo, kAtlasOpenRoadVertsCount,
-                                roadX, roadY + 0.075f, z,
-                                sourceScale, sourceScale, sourceScale * 0.58f, yaw,
-                                roadR * 1.18f * fog, roadG * 1.18f * fog, roadB * 1.16f * fog);
-        }
+        // The old flat-colored HighRoad stamping is intentionally paused in
+        // v0.017 so it cannot cover the new source asphalt. The source mesh
+        // remains cataloged for the later UV-preserving mesh conversion.
+        // The LowRoad/Junction/Open atlas meshes remain cataloged, but are not
+        // stamped as free-standing road modules in this hotfix. Their Unity
+        // scene transforms are required for correct placement; repeating them
+        // road-locally produced the large dark slabs seen in v0.016.
+
 
         // Real source road-line geometry is drawn on the non-junction surface families.
         if ((style == RoadStyle::HighLevel || style == RoadStyle::Underpass) &&
@@ -824,10 +1062,13 @@ void drawHighway(const nr3ds::Telemetry& s,
         // speed cue on the 3DS screen.
         if ((segId & 1) == 0) {
             const float lineGlow = (style == RoadStyle::Tunnel) ? 1.0f : 0.90f;
-            drawCube(roadX - kLaneWidth * 0.5f, roadY + 0.14f, z,
+            float lineLX = 0.0f, lineLZ = 0.0f, lineRX = 0.0f, lineRZ = 0.0f;
+            roadLocalOffset(roadX, z, yaw, -kLaneWidth * 0.5f, 0.0f, lineLX, lineLZ);
+            roadLocalOffset(roadX, z, yaw,  kLaneWidth * 0.5f, 0.0f, lineRX, lineRZ);
+            drawCube(lineLX, roadY + 0.14f, lineLZ,
                      0.075f, 0.018f, 3.45f, yaw,
                      lineGlow * fog, lineGlow * fog, 0.80f * fog);
-            drawCube(roadX + kLaneWidth * 0.5f, roadY + 0.14f, z,
+            drawCube(lineRX, roadY + 0.14f, lineRZ,
                      0.075f, 0.018f, 3.45f, yaw,
                      lineGlow * fog, lineGlow * fog, 0.80f * fog);
         }
@@ -868,14 +1109,15 @@ void drawHighway(const nr3ds::Telemetry& s,
         if (style == RoadStyle::SodiumFence) {
             if ((segId & 1) == 0) {
                 for (int side = -1; side <= 1; side += 2) {
-                    const float fx = roadX + float(side) * (roadHalf + 0.42f);
-                    drawCube(fx, roadY + 1.62f, z - 2.7f,
+                    float fx = 0.0f, fz = 0.0f;
+                    roadLocalOffset(roadX, z, yaw, float(side) * (roadHalf + 0.42f), 0.0f, fx, fz);
+                    drawCube(fx, roadY + 1.62f, fz - 2.7f,
                              0.08f, 1.65f, 0.08f, yaw,
                              0.58f * fog, 0.24f * fog, 0.055f * fog);
-                    drawCube(fx, roadY + 1.62f, z + 2.7f,
+                    drawCube(fx, roadY + 1.62f, fz + 2.7f,
                              0.08f, 1.65f, 0.08f, yaw,
                              0.58f * fog, 0.24f * fog, 0.055f * fog);
-                    drawCube(fx, roadY + 2.35f, z,
+                    drawCube(fx, roadY + 2.35f, fz,
                              0.08f, 0.08f, segLen, yaw,
                              0.55f * fog, 0.20f * fog, 0.045f * fog);
                 }
@@ -885,10 +1127,11 @@ void drawHighway(const nr3ds::Telemetry& s,
         // Normal roadside lamps; much closer to the player than the old scene.
         if ((segId % 3) == 1 && style != RoadStyle::Tunnel && style != RoadStyle::Underpass) {
             for (int side = -1; side <= 1; side += 2) {
-                const float lx = roadX + float(side) * (roadHalf + 1.05f);
-                drawCube(lx, roadY + 1.42f, z, 0.12f, 3.15f, 0.12f, yaw,
+                float lx = 0.0f, lz = 0.0f;
+                roadLocalOffset(roadX, z, yaw, float(side) * (roadHalf + 1.05f), 0.0f, lx, lz);
+                drawCube(lx, roadY + 1.42f, lz, 0.12f, 3.15f, 0.12f, yaw,
                          0.12f * fog, 0.11f * fog, 0.09f * fog);
-                drawCube(lx, roadY + 3.02f, z, 0.32f, 0.10f, 0.30f, yaw,
+                drawCube(lx, roadY + 3.02f, lz, 0.32f, 0.10f, 0.30f, yaw,
                          0.98f * fog, 0.52f * fog, 0.12f * fog);
             }
         }
@@ -899,8 +1142,9 @@ void drawHighway(const nr3ds::Telemetry& s,
             // rather than drawing the old temporary overhead-road corridor.
             if ((segId % 4) == 1) {
                 for (int side = -1; side <= 1; side += 2) {
-                    const float sx = roadX + float(side) * (roadHalf + 1.4f);
-                    drawCube(sx, roadY - 2.0f, z, 0.55f, 4.2f, 0.55f, yaw,
+                    float sx = 0.0f, sz = 0.0f;
+                    roadLocalOffset(roadX, z, yaw, float(side) * (roadHalf + 1.4f), 0.0f, sx, sz);
+                    drawCube(sx, roadY - 2.0f, sz, 0.55f, 4.2f, 0.55f, yaw,
                              0.11f * fog, 0.12f * fog, 0.14f * fog);
                 }
             }
@@ -928,7 +1172,7 @@ void drawHighway(const nr3ds::Telemetry& s,
         } else if (style == RoadStyle::Underpass) {
             drawCube(roadX, roadY + 3.55f, z,
                      14.0f, 0.34f, segLen + 0.25f, yaw,
-                     0.14f * fog, 0.14f * fog, 0.13f * fog);
+                     0.20f * fog, 0.20f * fog, 0.19f * fog);
             if ((segId & 1) == 0) {
                 drawCube(roadX - 3.3f, roadY + 3.34f, z,
                          2.0f, 0.08f, 0.30f, yaw,
@@ -1263,7 +1507,7 @@ void printUpgradeLine(int row, bool selected, const char* name,
 
 void drawGarageHud(const GarageState& garage, int selection, const char* status) {
     const auto cfg = garage.makeVehicleConfig();
-    std::printf("\x1b[1;1HNR TUNING // v0.016 SOURCE ATLAS      \x1b[K");
+    std::printf("\x1b[1;1HNR TUNING // v0.017 SOURCE TEX      \x1b[K");
     std::printf("\x1b[2;1H$%-6d   RECORD %dW / %dL            \x1b[K",
                 garage.cash(), garage.wins(), garage.losses());
     std::printf("\x1b[3;1H%.0fNm  +%.0fhp turbo  grip %.2f/%.2f\x1b[K",
@@ -1507,14 +1751,14 @@ int main(int argc, char** argv) {
 
         if (rt.phase == RacePhase::Countdown) {
             const int count = std::max(1, int(std::ceil(rt.countdown)));
-            std::printf("\x1b[1;1HNR3DS v0.016 - SOURCE ATLAS C1    \x1b[K");
+            std::printf("\x1b[1;1HNR3DS v0.017 - SOURCE TEXTURES    \x1b[K");
             std::printf("\x1b[5;1HRACE: GET READY  %d          \x1b[K", count);
         } else if (rt.phase == RacePhase::Racing) {
-            std::printf("\x1b[1;1HNR3DS v0.016 - SOURCE ATLAS C1    \x1b[K");
+            std::printf("\x1b[1;1HNR3DS v0.017 - SOURCE TEXTURES    \x1b[K");
             std::printf("\x1b[5;1HRACE: GO  CP %d/%d             \x1b[K",
                         rt.checkpointIndex, int(RaceSession::kCheckpointCount));
         } else {
-            std::printf("\x1b[1;1HNR3DS v0.016 - SOURCE ATLAS C1    \x1b[K");
+            std::printf("\x1b[1;1HNR3DS v0.017 - SOURCE TEXTURES    \x1b[K");
             std::printf("\x1b[5;1HRESULT: %s                 \x1b[K",
                         rt.playerWon ? "YOU WIN +$1000" : "RIVAL WINS +$300");
             std::printf("\x1b[6;1HY=garage  SELECT=retry          \x1b[K");
@@ -1540,9 +1784,10 @@ int main(int argc, char** argv) {
                     gRoute.activeChunkFirst(worldProgressM),
                     gRoute.activeChunkLast(worldProgressM));
         std::printf("\x1b[15;1HSource: %-18s\x1b[K", currentSection.sourceName);
-        std::printf("\x1b[16;1HGeo: 7 source mesh families + Livisa\x1b[K");
-        std::printf("\x1b[17;1HAudio: %s\x1b[K", gAudioReady ? "NDSP test loop" : "DSP unavailable");
-        std::printf("\x1b[18;1HCPU: %6.2f%% GPU: %6.2f%%\x1b[K",
+        std::printf("\x1b[16;1HGeo: source meshes + Livisa\x1b[K");
+        std::printf("\x1b[17;1HTex: ROAD2 + TUNNEL GRUNGE      \x1b[K");
+        std::printf("\x1b[18;1HAudio: %s\x1b[K", gAudioReady ? "NDSP test loop" : "DSP unavailable");
+        std::printf("\x1b[19;1HCPU: %6.2f%% GPU: %6.2f%%\x1b[K",
                     C3D_GetProcessingTime() * 6.0f,
                     C3D_GetDrawingTime() * 6.0f);
     }
