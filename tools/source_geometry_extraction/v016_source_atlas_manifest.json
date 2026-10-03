@@ -1,0 +1,167 @@
+{
+  "version": "0.016",
+  "description": "Developer-authorized NIGHT-RUNNERS source mesh atlas normalized for road-local Citro3D rendering.",
+  "sources": [
+    {
+      "key": "HighRoad",
+      "sharedassets": 13,
+      "path_id": 32,
+      "name": "_HIGH_LANE_LOD.001",
+      "use": "high/elevated road LOD1",
+      "source_vertices": 576,
+      "triangles": 316,
+      "expanded_vertices": 948,
+      "forward_axis": "x",
+      "lateral_axis": "y",
+      "lateral_extent": 1.0085296630859375,
+      "raw_min": [
+        67.7410888671875,
+        64.82839965820312,
+        0.5596033930778503
+      ],
+      "raw_max": [
+        70.38845825195312,
+        66.845458984375,
+        0.8380060195922852
+      ]
+    },
+    {
+      "key": "LowRoad",
+      "sharedassets": 16,
+      "path_id": 55,
+      "name": "_LOW_MESH_LOD_1.003",
+      "use": "low/underpass road LOD1",
+      "source_vertices": 1823,
+      "triangles": 951,
+      "expanded_vertices": 2853,
+      "forward_axis": "y",
+      "lateral_axis": "x",
+      "lateral_extent": 1.0182323455810547,
+      "raw_min": [
+        -21.99195098876953,
+        94.59352111816406,
+        0.35866034030914307
+      ],
+      "raw_max": [
+        -19.955486297607422,
+        99.17428588867188,
+        0.5978915095329285
+      ]
+    },
+    {
+      "key": "JunctionRoad",
+      "sharedassets": 11,
+      "path_id": 4,
+      "name": ".DUAL LANE JUCTION LOD1.013",
+      "use": "junction road LOD1",
+      "source_vertices": 4663,
+      "triangles": 2763,
+      "expanded_vertices": 8289,
+      "forward_axis": "x",
+      "lateral_axis": "y",
+      "lateral_extent": 0.5749435424804688,
+      "raw_min": [
+        43.47362518310547,
+        57.95310974121094,
+        0.42100387811660767
+      ],
+      "raw_max": [
+        47.004295349121094,
+        59.102996826171875,
+        0.6157936453819275
+      ]
+    },
+    {
+      "key": "TunnelRoof",
+      "sharedassets": 19,
+      "path_id": 56,
+      "name": "_TUNNEL_OG_2x2_LANE_HIGH_ROOF.132",
+      "use": "tunnel roof LOD1",
+      "source_vertices": 1056,
+      "triangles": 528,
+      "expanded_vertices": 1584,
+      "forward_axis": "x",
+      "lateral_axis": "y",
+      "lateral_extent": 1.6286125183105469,
+      "raw_min": [
+        49.11799621582031,
+        43.18560028076172,
+        -0.8572825193405151
+      ],
+      "raw_max": [
+        52.5292854309082,
+        46.44282531738281,
+        -0.8243802189826965
+      ]
+    },
+    {
+      "key": "RoadLines",
+      "sharedassets": 16,
+      "path_id": 56,
+      "name": "_LOW_ROADLINES.003",
+      "use": "source road-line geometry",
+      "source_vertices": 880,
+      "triangles": 432,
+      "expanded_vertices": 1296,
+      "forward_axis": "y",
+      "lateral_axis": "x",
+      "lateral_extent": 0.9676408767700195,
+      "raw_min": [
+        -21.93735122680664,
+        94.615966796875,
+        0.4651404917240143
+      ],
+      "raw_max": [
+        -20.0020694732666,
+        99.16507720947266,
+        0.4795880913734436
+      ]
+    },
+    {
+      "key": "Support",
+      "sharedassets": 2,
+      "path_id": 1100,
+      "name": "SUPPORTS STEEL WHITE NEW.002",
+      "use": "compact source support",
+      "source_vertices": 170,
+      "triangles": 104,
+      "expanded_vertices": 312,
+      "forward_axis": "x",
+      "lateral_axis": "y",
+      "lateral_extent": 0.10955574735999107,
+      "raw_min": [
+        -0.10955576598644257,
+        -0.10955573618412018,
+        -0.7250706553459167
+      ],
+      "raw_max": [
+        0.23718105256557465,
+        0.10955575853586197,
+        0.13719333708286285
+      ]
+    },
+    {
+      "key": "OpenRoad",
+      "sharedassets": 25,
+      "path_id": 22,
+      "name": "._2_LANE_OG.028",
+      "use": "AREA_0,8 two-lane source road",
+      "source_vertices": 768,
+      "triangles": 384,
+      "expanded_vertices": 1152,
+      "forward_axis": "x",
+      "lateral_axis": "y",
+      "lateral_extent": 0.2881031036376953,
+      "raw_min": [
+        7.797869682312012,
+        -34.673492431640625,
+        0.62974613904953
+      ],
+      "raw_max": [
+        12.614174842834473,
+        -34.097286224365234,
+        0.7108956575393677
+      ]
+    }
+  ]
+}

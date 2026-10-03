@@ -7,14 +7,14 @@ endif
 TOPDIR ?= $(CURDIR)
 include $(DEVKITARM)/3ds_rules
 
-TARGET      := nr3ds_v015
+TARGET      := nr3ds_v016
 BUILD       := build
 SOURCES     := source ../core
 DATA        :=
 INCLUDES    := ../core
 
-APP_TITLE       := NR3DS v0.015
-APP_DESCRIPTION := Long recovered C1 route source Livisa and NDSP audio test
+APP_TITLE       := NR3DS v0.016
+APP_DESCRIPTION := Multi-scene source mesh atlas long C1 Livisa and audio
 APP_AUTHOR      := NR3DS project
 
 ARCH := -march=armv6k -mtune=mpcore -mfloat-abi=hard -mtp=soft

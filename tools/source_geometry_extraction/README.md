@@ -17,3 +17,10 @@ Selected source mesh families include:
 The raw PC meshes are not embedded in the v0.013 executable. The game uses lightweight generated geometry so the scene remains suitable for Old 3DS.
 
 The exact `AREA_2,1` and `AREA_TUNNEL_2,1` render meshes live in additive Unity scenes/assets that have not yet been supplied. Once those scene asset files are available, the same pipeline can replace the generic proxy shell with section-specific converted geometry.
+
+
+## v0.016 multi-scene atlas
+
+The complete sharedassets set is now available. v0.016 adds seven actual source mesh families from sharedassets 2, 11, 13, 16, 19 and 25. See `v016_source_atlas_manifest.json`.
+
+These meshes are normalized offline to a common road-local frame. This is deliberately an intermediate step before exact additive-scene instance placement and textured rendering.

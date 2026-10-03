@@ -14,6 +14,7 @@
 #include "nr_source_geometry.hpp"
 #include "source_meshes.hpp"
 #include "source_car.hpp"
+#include "source_world_atlas.hpp"
 
 using nr3ds::InputState;
 using nr3ds::Vehicle;
@@ -76,6 +77,13 @@ void* gVbo = nullptr;
 void* gSourceRoadVbo = nullptr;
 void* gSourceTunnelRoofVbo = nullptr;
 void* gLivisaCarVbo = nullptr;
+void* gAtlasHighRoadVbo = nullptr;
+void* gAtlasLowRoadVbo = nullptr;
+void* gAtlasJunctionRoadVbo = nullptr;
+void* gAtlasTunnelRoofVbo = nullptr;
+void* gAtlasRoadLinesVbo = nullptr;
+void* gAtlasSupportVbo = nullptr;
+void* gAtlasOpenRoadVbo = nullptr;
 nr3ds::ExpresswayRoute gRoute;
 
 
@@ -284,6 +292,23 @@ void sceneInit() {
     if (gLivisaCarVbo)
         std::memcpy(gLivisaCarVbo, kLivisaStockVerts, sizeof(kLivisaStockVerts));
 
+    // v0.016 multi-scene source atlas. These are actual developer-authorized
+    // Unity mesh triangles normalized offline into a common road-local frame.
+    gAtlasHighRoadVbo = linearAlloc(sizeof(kAtlasHighRoadVerts));
+    if (gAtlasHighRoadVbo) std::memcpy(gAtlasHighRoadVbo, kAtlasHighRoadVerts, sizeof(kAtlasHighRoadVerts));
+    gAtlasLowRoadVbo = linearAlloc(sizeof(kAtlasLowRoadVerts));
+    if (gAtlasLowRoadVbo) std::memcpy(gAtlasLowRoadVbo, kAtlasLowRoadVerts, sizeof(kAtlasLowRoadVerts));
+    gAtlasJunctionRoadVbo = linearAlloc(sizeof(kAtlasJunctionRoadVerts));
+    if (gAtlasJunctionRoadVbo) std::memcpy(gAtlasJunctionRoadVbo, kAtlasJunctionRoadVerts, sizeof(kAtlasJunctionRoadVerts));
+    gAtlasTunnelRoofVbo = linearAlloc(sizeof(kAtlasTunnelRoofVerts));
+    if (gAtlasTunnelRoofVbo) std::memcpy(gAtlasTunnelRoofVbo, kAtlasTunnelRoofVerts, sizeof(kAtlasTunnelRoofVerts));
+    gAtlasRoadLinesVbo = linearAlloc(sizeof(kAtlasRoadLinesVerts));
+    if (gAtlasRoadLinesVbo) std::memcpy(gAtlasRoadLinesVbo, kAtlasRoadLinesVerts, sizeof(kAtlasRoadLinesVerts));
+    gAtlasSupportVbo = linearAlloc(sizeof(kAtlasSupportVerts));
+    if (gAtlasSupportVbo) std::memcpy(gAtlasSupportVbo, kAtlasSupportVerts, sizeof(kAtlasSupportVerts));
+    gAtlasOpenRoadVbo = linearAlloc(sizeof(kAtlasOpenRoadVerts));
+    if (gAtlasOpenRoadVbo) std::memcpy(gAtlasOpenRoadVbo, kAtlasOpenRoadVerts, sizeof(kAtlasOpenRoadVerts));
+
     bindPositionVbo(gVbo, sizeof(Vertex));
 
     C3D_DepthTest(true, GPU_GREATER, GPU_WRITE_ALL);
@@ -297,6 +322,13 @@ void sceneInit() {
 }
 
 void sceneExit() {
+    if (gAtlasOpenRoadVbo) linearFree(gAtlasOpenRoadVbo);
+    if (gAtlasSupportVbo) linearFree(gAtlasSupportVbo);
+    if (gAtlasRoadLinesVbo) linearFree(gAtlasRoadLinesVbo);
+    if (gAtlasTunnelRoofVbo) linearFree(gAtlasTunnelRoofVbo);
+    if (gAtlasJunctionRoadVbo) linearFree(gAtlasJunctionRoadVbo);
+    if (gAtlasLowRoadVbo) linearFree(gAtlasLowRoadVbo);
+    if (gAtlasHighRoadVbo) linearFree(gAtlasHighRoadVbo);
     if (gLivisaCarVbo) linearFree(gLivisaCarVbo);
     if (gSourceTunnelRoofVbo) linearFree(gSourceTunnelRoofVbo);
     if (gSourceRoadVbo) linearFree(gSourceRoadVbo);
@@ -570,6 +602,16 @@ void drawSourceSupport(float roadX, float roadY, float z, float yaw,
     const float pierOffset = roadHalf + 1.85f;
     const float h = (variant & 1) ? 4.7f : 5.4f;
 
+    // Actual compact support mesh from sharedassets2. It is cheap enough to
+    // retain alongside the coarse safety proxy and gives the silhouette source detail.
+    if (gAtlasSupportVbo) {
+        const float sourceScale = roadHalf * 0.92f;
+        drawSourceTriangles(gAtlasSupportVbo, kAtlasSupportVertsCount,
+                            roadX, roadY - 5.1f, z,
+                            sourceScale, sourceScale * 0.14f, sourceScale * 1.05f, yaw,
+                            0.24f * fog, 0.25f * fog, 0.26f * fog);
+    }
+
     // Reduced proxy of AREA_2_SUPPORTS2.001/.002: twin piers, cap beam and a
     // darker under-deck. The original source meshes are enormous spans; this
     // version repeats a short module that streams cheaply.
@@ -604,16 +646,14 @@ void drawSourceTunnelModule(float roadX, float roadY, float z, float yaw,
              roadHalf * 2.0f + 1.45f, 0.32f, 10.2f, yaw,
              0.39f * fog, 0.36f * fog, 0.25f * fog);
 
-    // Actual developer-authorized source LOD geometry from
-    // _TUNNEL_OG_2x2_LANE_HIGH_ROOF.520. The offline converter normalized
-    // the original Unity mesh into road-local coordinates, so we can retain
-    // its silhouette without carrying Unity's runtime/material system.
-    if ((segmentIndex & 1) == 0) {
+    // v0.016 uses a second tunnel family recovered from sharedassets19,
+    // rather than repeating the single v0.014 test roof everywhere.
+    if ((segmentIndex % 3) == 0) {
         const float sourceScale = roadHalf + 0.42f;
-        drawSourceTriangles(gSourceTunnelRoofVbo, kSourceTunnelRoofVertsCount,
-                            roadX, roadY + 2.70f, z,
-                            sourceScale, sourceScale, sourceScale, yaw,
-                            0.54f * fog, 0.47f * fog, 0.29f * fog);
+        drawSourceTriangles(gAtlasTunnelRoofVbo, kAtlasTunnelRoofVertsCount,
+                            roadX, roadY + 3.20f, z,
+                            sourceScale, sourceScale * 0.50f, sourceScale * 4.0f, yaw,
+                            0.58f * fog, 0.51f * fog, 0.32f * fog);
     }
 
     // Ribbing is one of the strongest tunnel depth cues in the original.
@@ -745,17 +785,39 @@ void drawHighway(const nr3ds::Telemetry& s,
                  0.22f, 0.72f, segLen, yaw,
                  barrierR * fog, barrierG * fog, barrierB * fog);
 
-        // First actual source-road geometry pass. AREA_2 double single
-        // template.013 is drawn sparsely over the procedural safety deck so
-        // holes or material differences cannot break drivability. Its stable
-        // segId cadence also prevents the old re-phasing/reset artifact.
-        if ((style == RoadStyle::HighLevel || style == RoadStyle::Junction) &&
-            (segId % 4) == 0) {
-            const float sourceScale = roadHalf * 0.96f;
-            drawSourceTriangles(gSourceRoadVbo, kSourceRoadVertsCount,
-                                roadX, roadY + 0.08f, z,
-                                sourceScale, sourceScale, sourceScale, yaw,
-                                roadR * 1.18f * fog, roadG * 1.18f * fog, roadB * 1.14f * fog);
+        // v0.016 source atlas: different recovered LOD families are selected
+        // by road context instead of stamping one AREA_2 mesh across the entire map.
+        // The procedural deck remains underneath as collision/visual insurance.
+        const float sourceScale = roadHalf * 0.96f;
+        if (style == RoadStyle::HighLevel && (segId % 2) == 0) {
+            drawSourceTriangles(gAtlasHighRoadVbo, kAtlasHighRoadVertsCount,
+                                roadX, roadY + 0.075f, z,
+                                sourceScale, sourceScale, sourceScale * 2.35f, yaw,
+                                roadR * 1.20f * fog, roadG * 1.20f * fog, roadB * 1.16f * fog);
+        } else if (style == RoadStyle::Underpass && (segId % 3) == 0) {
+            drawSourceTriangles(gAtlasLowRoadVbo, kAtlasLowRoadVertsCount,
+                                roadX, roadY + 0.075f, z,
+                                sourceScale, sourceScale, sourceScale * 1.35f, yaw,
+                                roadR * 1.17f * fog, roadG * 1.17f * fog, roadB * 1.15f * fog);
+        } else if (style == RoadStyle::Junction && (segId % 5) == 0) {
+            drawSourceTriangles(gAtlasJunctionRoadVbo, kAtlasJunctionRoadVertsCount,
+                                roadX, roadY + 0.075f, z,
+                                sourceScale, sourceScale, sourceScale * 1.05f, yaw,
+                                roadR * 1.19f * fog, roadG * 1.19f * fog, roadB * 1.15f * fog);
+        } else if (style == RoadStyle::Open && (segId % 5) == 0) {
+            drawSourceTriangles(gAtlasOpenRoadVbo, kAtlasOpenRoadVertsCount,
+                                roadX, roadY + 0.075f, z,
+                                sourceScale, sourceScale, sourceScale * 0.58f, yaw,
+                                roadR * 1.18f * fog, roadG * 1.18f * fog, roadB * 1.16f * fog);
+        }
+
+        // Real source road-line geometry is drawn on the non-junction surface families.
+        if ((style == RoadStyle::HighLevel || style == RoadStyle::Underpass) &&
+            (segId % 3) == 1) {
+            drawSourceTriangles(gAtlasRoadLinesVbo, kAtlasRoadLinesVertsCount,
+                                roadX, roadY + 0.145f, z,
+                                sourceScale, sourceScale, sourceScale * 1.35f, yaw,
+                                0.92f * fog, 0.91f * fog, 0.76f * fog);
         }
 
         // Highly visible reflective lane markings. These are a cheap but strong
@@ -1201,7 +1263,7 @@ void printUpgradeLine(int row, bool selected, const char* name,
 
 void drawGarageHud(const GarageState& garage, int selection, const char* status) {
     const auto cfg = garage.makeVehicleConfig();
-    std::printf("\x1b[1;1HNR TUNING // v0.015 LIVISA      \x1b[K");
+    std::printf("\x1b[1;1HNR TUNING // v0.016 SOURCE ATLAS      \x1b[K");
     std::printf("\x1b[2;1H$%-6d   RECORD %dW / %dL            \x1b[K",
                 garage.cash(), garage.wins(), garage.losses());
     std::printf("\x1b[3;1H%.0fNm  +%.0fhp turbo  grip %.2f/%.2f\x1b[K",
@@ -1445,14 +1507,14 @@ int main(int argc, char** argv) {
 
         if (rt.phase == RacePhase::Countdown) {
             const int count = std::max(1, int(std::ceil(rt.countdown)));
-            std::printf("\x1b[1;1HNR3DS v0.015 - LONG C1 + LIVISA    \x1b[K");
+            std::printf("\x1b[1;1HNR3DS v0.016 - SOURCE ATLAS C1    \x1b[K");
             std::printf("\x1b[5;1HRACE: GET READY  %d          \x1b[K", count);
         } else if (rt.phase == RacePhase::Racing) {
-            std::printf("\x1b[1;1HNR3DS v0.015 - LONG C1 + LIVISA    \x1b[K");
+            std::printf("\x1b[1;1HNR3DS v0.016 - SOURCE ATLAS C1    \x1b[K");
             std::printf("\x1b[5;1HRACE: GO  CP %d/%d             \x1b[K",
                         rt.checkpointIndex, int(RaceSession::kCheckpointCount));
         } else {
-            std::printf("\x1b[1;1HNR3DS v0.015 - LONG C1 + LIVISA    \x1b[K");
+            std::printf("\x1b[1;1HNR3DS v0.016 - SOURCE ATLAS C1    \x1b[K");
             std::printf("\x1b[5;1HRESULT: %s                 \x1b[K",
                         rt.playerWon ? "YOU WIN +$1000" : "RIVAL WINS +$300");
             std::printf("\x1b[6;1HY=garage  SELECT=retry          \x1b[K");
@@ -1478,7 +1540,7 @@ int main(int argc, char** argv) {
                     gRoute.activeChunkFirst(worldProgressM),
                     gRoute.activeChunkLast(worldProgressM));
         std::printf("\x1b[15;1HSource: %-18s\x1b[K", currentSection.sourceName);
-        std::printf("\x1b[16;1HGeo: source LOD + Livisa + long C1\x1b[K");
+        std::printf("\x1b[16;1HGeo: 7 source mesh families + Livisa\x1b[K");
         std::printf("\x1b[17;1HAudio: %s\x1b[K", gAudioReady ? "NDSP test loop" : "DSP unavailable");
         std::printf("\x1b[18;1HCPU: %6.2f%% GPU: %6.2f%%\x1b[K",
                     C3D_GetProcessingTime() * 6.0f,

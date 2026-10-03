@@ -1,34 +1,32 @@
-# Reverse-engineering / conversion notes - v0.015
+# Reverse-engineering / conversion notes — v0.016
 
-v0.015 uses developer-authorized source material supplied by the user.
+## Complete sharedassets set
 
-## Route
+The four user-supplied `gpt1.7z` … `gpt4.7z` archives were unpacked successfully and collectively contain every `sharedassetsN.assets` file from 0 through 86 plus the available `.resS`/`.resource` companions.
 
-The route header is generated from ordered waypoint chains extracted from `level1 / C1_TATSUMI.unity`.
-The connected route is 6972.709 m and resampled at 8 m intervals (873 samples). Several short gaps
-between separately serialized route chains are linearly bridged; these bridges are documented in
-`tools/map_reconstruction/v015_route_sections.json`.
+A Unity 2018.4.26f1 SerializedFile parser was used to index object tables without requiring UnityPy/AssetRipper. Across all 87 sharedassets files the current catalog contains 53,372 serialized objects, including 5,210 Mesh, 337 Material and 1,892 Texture2D objects.
 
-## Livisa '89
+## Mesh decode
 
-The source customization UnityFS bundle was unpacked and its Unity 2018 Mesh objects parsed. The
-v0.015 road/showroom shell combines representative stock meshes (doors, stock bumpers/fenders/hood,
-headlights, hatch/rear pieces, side skirts and exhaust). Mesh-local coordinates are already authored
-in a common vehicle space, so the conversion preserves source proportions before welding to an
-Old-3DS-oriented LOD.
+For uncompressed static road meshes, the converter decodes:
 
-Road LOD in v0.015:
-- 3176 welded vertices
-- 6368 triangles
-- 19104 expanded Citro3D draw vertices
-- approximately 1.72 m wide, 4.05 m long, 0.99 m body-panel height
+- submesh table
+- 16/32-bit index buffers
+- VertexData channel descriptors
+- interleaved Float32 position channel
 
-The current fixed-color shader does not yet preserve source materials/UV textures. Glass, wheels and
-lights are separate procedural overlays pending the material/customization pass.
+The source road meshes in this pass generally use stream 0 with position/normal/tangent/color/UV channels. v0.016 expands indexed triangles offline so the current 3DS renderer can continue using `C3D_DrawArrays(GPU_TRIANGLES, ...)`.
 
-## Music
+## Road-local normalization
 
-The supplied music UnityFS bundle contains 30 streamed Unity AudioClip objects. Resource payloads
-were located exactly and identified as FSB5, codec/compression value 1 at the Unity AudioClip level.
-The 3DS build does not ship those source tracks yet. v0.015 validates NDSP playback using an original
-runtime-generated PCM loop; offline FSB5 decoding/transcoding is the next audio step.
+The source PC meshes are authored in local XY with Z as vertical, but different scene families are rotated differently before their Unity Transform is applied. The v0.016 converter therefore chooses the longer source XY extent as the forward axis and the shorter one as lateral, then normalizes lateral half-width to 1.0. This lets each mesh family reuse the existing recovered-route frame.
+
+This is not yet exact per-instance Unity scene placement. Exact scene MeshFilter/Transform reconstruction is being developed separately; v0.016 is the intermediate atlas step that provides substantially more authentic geometry while retaining the stable route renderer.
+
+## Source atlas
+
+See `tools/source_geometry_extraction/v016_source_atlas_manifest.json` for exact sharedassets/path IDs and raw bounds.
+
+## Textures
+
+Texture2D names/path IDs are now catalogued across the complete sharedassets set. Texture payload decoding, format conversion, UV retention and PICA200 texture upload are intentionally deferred rather than pretending fixed colors are original textures.

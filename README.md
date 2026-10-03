@@ -1,65 +1,45 @@
-# NR3DS v0.015
+# NR3DS v0.016 — Source Atlas C1
 
-Long recovered-C1 route, first real source-car pass, and first 3DS audio-output milestone.
+v0.016 turns the four supplied 7-Zip archives into a complete NIGHT-RUNNERS static-asset catalog and expands the 3DS renderer from one repeated source-road test mesh to a multi-scene source mesh atlas.
 
-## What is new
+## Full sharedassets catalog
 
-### ~6.97 km recovered C1 route
+All `sharedassets0.assets` through `sharedassets86.assets` were successfully recovered from the four archives. The catalog currently indexes:
 
-The source-derived route has been expanded from about 2.09 km to about 6.97 km using
-ordered waypoint chains recovered from `level1 / C1_TATSUMI.unity`.
+- 87 sharedassets files
+- 53,372 serialized Unity objects
+- 5,210 Mesh objects
+- 337 Material objects
+- 1,892 Texture2D objects
 
-The current connected chain is:
+The machine-readable catalog is under `tools/full_asset_catalog/`. This gives later builds a direct lookup table for source mesh names/path IDs instead of rediscovering assets one file at a time.
 
-- `WP_AREA_2,1_HIGH_0`
-- partial `WP_AREA_2,1_R_0`
-- `WP_AREA_2,1_TUNNEL_0`
-- `WP_AREA_2,1_1_MAIN_L_1`
-- `WP_RIGHT_MAIN_1.0`
-- `WP_RIGHT_MAIN_1.1`
-- the connected `WP_LEFT_MAIN_0` branch (reversed)
-- the connected `WP_RIGHT_MAIN_0` branch
-- `WP_RIGHT_HIGHER_MAIN_0_JOIN`
-- `WP_RIGHT_HIGHER_MAIN_0.1`
-- `WP_AREA_0,8_HIGH_0 (1)`
-- `WP_AREA_0_UPPER_R_0`
-- `WP_AREA_0,1_MAIN_R_4`
+## Seven source mesh families in the 3DS renderer
 
-Short gaps between additive-scene waypoint chains are bridged linearly offline. The road
-centerline itself no longer uses hand-authored sine curves.
+v0.014/v0.015 used one AREA_2 road test mesh and one tunnel roof. v0.016 adds a normalized source atlas built directly from developer-authorized Unity mesh data:
 
-The sprint race is now 6.4 km with checkpoints at 1.6 / 3.2 / 4.8 km.
+- high/elevated road — `sharedassets13 / _HIGH_LANE_LOD.001`
+- low/underpass road — `sharedassets16 / _LOW_MESH_LOD_1.003`
+- junction road — `sharedassets11 / .DUAL LANE JUCTION LOD1.013`
+- tunnel roof — `sharedassets19 / _TUNNEL_OG_2x2_LANE_HIGH_ROOF.132`
+- actual road-line geometry — `sharedassets16 / _LOW_ROADLINES.003`
+- compact steel support — `sharedassets2 / SUPPORTS STEEL WHITE NEW.002`
+- AREA_0,8/open road — `sharedassets25 / ._2_LANE_OG.028`
 
-### First real source player car
+The meshes are converted offline into road-local coordinates and uploaded to dedicated Citro3D VBOs. The renderer selects different source geometry according to the recovered road style instead of stamping the same mesh across the entire route.
 
-The cuboid body has been replaced by a road-LOD conversion made from the developer-authorized
-Sannis Livisa '89 customization bundle. The first pass combines representative stock body
-panels into a welded ~6,368-triangle shell (~19,104 expanded draw vertices).
+The procedural road deck remains underneath as a safety/fallback surface while source alignment and Old-3DS performance are validated. Source textures/materials are catalogued but are **not yet rendered as textures in v0.016**; the source meshes still use the fixed-color Citro3D material path.
 
-The same source body is used in the showroom and on the expressway. Wheels, glass and light
-accents remain intentionally cheap procedural pieces for now so they can later become separate
-customization slots.
+## Kept from v0.015
 
-### Audio pipeline online
-
-The supplied music UnityFS bundle was parsed into 30 streamed `AudioClip` entries. Exact names,
-durations, source sample rates and FSB5 offsets/sizes are stored in:
-
-`tools/music_import/source_music_manifest.json`
-
-The source songs are FSB5/Vorbis and are **not embedded in this build yet**. v0.015 instead
-runs a tiny original four-second PCM synth loop through the 3DS NDSP API to validate real
-hardware/emulator audio output without blocking the map/car work on FSB5 transcoding.
-
-### Kept from v0.014.1
-
+- ~6.97 km recovered C1 centerline
+- 6.4 km sprint race
 - continuous world movement after a race result
-- stable absolute segment IDs (no 10 m scenery re-phasing)
-- source road/tunnel LOD test geometry
-- high-speed steering precision
-- wall sliding and traffic collisions
-- traffic/rival race systems
-- garage/upgrades/gearing
+- stable scenery segment IDs/no 10 m re-phasing
+- source Sannis Livisa '89 body
+- traffic, rival, collisions and tuning
+- 3DS NDSP audio test loop
+- 30-track source music manifest
 
 ## Controls
 
@@ -83,10 +63,10 @@ Expressway:
 
 ## Expected build
 
-`nr3ds_v015.3dsx`
+`nr3ds_v016.3dsx`
 
-## Performance note
+## Test focus
 
-Azahar processing percentages are useful for spotting regressions but are not a substitute for
-performance testing on a physical Old 3DS. The Livisa shell is deliberately a first LOD pass;
-further mesh/material work will be budgeted against real-hardware measurements.
+Watch for source-road pieces that are obviously rotated, too tall, too wide, or expensive to render. The atlas intentionally keeps the procedural deck underneath, so a bad source module should affect appearance rather than make the route undrivable.
+
+Desktop core/race/garage/world tests pass, and `3ds/source/main.cpp` passes a local syntax-only C++17 compile with libctru/Citro3D API stubs. GitHub Actions remains the authoritative 3DS toolchain build.

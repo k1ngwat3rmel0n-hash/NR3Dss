@@ -1,24 +1,25 @@
 # NR3DS roadmap
 
-## Stable baseline through v0.015
+## Stable through v0.016
 
-- Native Citro3D Old-3DS-oriented renderer
-- Recovered NIGHT-RUNNERS C1 waypoint pipeline
-- ~6.97 km connected recovered route
-- stable segment streaming / post-race continuous driving
-- source LOD road/tunnel geometry tests
-- first source-derived Livisa '89 player/showroom body
-- high-speed steering precision and wall slide behavior
-- traffic, rival sprint, rewards, garage upgrades and gearing
-- NDSP audio-output test
-- parsed 30-track source music manifest
+- native devkitARM/libctru/Citro3D project
+- NIGHT-RUNNERS-derived vehicle handling baseline
+- stable high-speed steering and wall slide
+- traffic and rival sprint race
+- tuning garage
+- recovered C1 waypoint route expanded to ~6.97 km
+- continuous post-race world travel
+- developer-authorized Livisa '89 source body
+- complete `sharedassets0–86` asset catalog
+- seven-family source road/tunnel/support/roadline atlas
+- 3DS NDSP audio test path and 30-track music manifest
 
 ## Next
 
-- Connect additional recovered branches/junction choices instead of one linear test chain
-- Convert more original road/tunnel/fence/support meshes by scene and place them with recovered transforms
-- Texture/UV/material pass for Livisa '89 and separate customizable body-part slots
-- Decode/transcode source FSB5 music offline to 3DS-friendly streaming audio
-- Free-roam rival encounter / parking-area challenge loop
-- persistent save data
-- physical Old 3DS profiling and geometry budgets
+1. Retain UVs in converted source meshes and decode selected road/tunnel Texture2D payloads from `.resS`.
+2. Build a small PICA200-friendly texture atlas and replace fixed-color source meshes section by section.
+3. Reconstruct MeshFilter + Transform placement from additive scenes so road furniture/buildings can use exact source positions instead of road-local repetition.
+4. Extend the C1 graph with junction choices/free-roam rather than one linear sprint chain.
+5. Split Livisa body into real bumper/hood/spoiler/wheel customization slots.
+6. Offline-transcode selected authorized FSB5 music streams into a 3DS-friendly streaming format.
+7. Profile on physical Old 3DS and tune triangle/texture budgets.
